@@ -20,6 +20,7 @@ namespace LaunchPlanner
     public class PartInfo
     {
         public string Name;
+        public string Variant = "";  // contenu choisi pour un réservoir commutable (B9PartSwitch)
         public string Title;
         public string Source;      // dossier de GameData d'où vient la pièce (Squad, SquadExpansion, nom du mod…)
         public string Sizes;       // profils de fixation, ex. "size1, srf"
@@ -62,6 +63,8 @@ namespace LaunchPlanner
             "LqdHydrogen", "LqdMethane", "LqdOxygen", "Kerosene", "Hydrazine",
         };
 
+        static readonly HashSet<string> CommandModules = new HashSet<string> { "ModuleCommand" };
+
         static readonly HashSet<string> DecouplerModules = new HashSet<string>
         {
             "ModuleDecouple", "ModuleAnchoredDecoupler",
@@ -85,10 +88,12 @@ namespace LaunchPlanner
                 LoadedCount++;
                 try
                 {
-                    PartInfo info = Describe(ap);
-                    if (info == null) continue;
-                    info.Unlocked = !hasRnD || SafePurchased(ap);
-                    Parts.Add(info);
+                    bool unlocked = !hasRnD || SafePurchased(ap);
+                    foreach (PartInfo info in Describe(ap))
+                    {
+                        info.Unlocked = unlocked;
+                        Parts.Add(info);
+                    }
                 }
                 catch (Exception e)
                 {
@@ -120,7 +125,81 @@ namespace LaunchPlanner
             catch { return true; }
         }
 
-        static PartInfo Describe(AvailablePart ap)
+        /// <summary>
+        /// Une pièce donne zéro, une ou plusieurs entrées : un réservoir commutable (B9PartSwitch,
+        /// utilisé par CryoTanks et beaucoup de mods) donne une entrée par contenu possible.
+        /// </summary>
+        static List<PartInfo> Describe(AvailablePart ap)
+        {
+            List<PartInfo> result = new List<PartInfo>();
+            PartInfo info = DescribeBase(ap);
+            if (info == null) return result;
+            if (info.Kind != PartKind.Tank)
+            {
+                result.Add(info);
+                return result;
+            }
+            result.AddRange(B9TankVariants(ap.partPrefab, info));
+            if (result.Count == 0 && HasFuel(info)) result.Add(info);
+            return result;
+        }
+
+        static bool HasFuel(PartInfo info)
+        {
+            foreach (ResourceAmount r in info.Resources)
+                if (FuelResources.Contains(r.Name) && r.Amount > 0) return true;
+            return false;
+        }
+
+        static List<PartInfo> B9TankVariants(Part prefab, PartInfo baseInfo)
+        {
+            List<PartInfo> variants = new List<PartInfo>();
+            foreach (object module in Refl.Items(Refl.Get(prefab, "Modules")))
+            {
+                if (module == null || module.GetType().Name != "ModuleB9PartSwitch") continue;
+                foreach (object subtype in Refl.Items(Refl.Get(module, "subtypes")))
+                {
+                    object tankType = Refl.Get(subtype, "tankType");
+                    if (tankType == null) continue;
+                    double volume = ToDouble(Refl.Call(module, "GetTotalVolume", subtype));
+                    if (volume <= 0) continue;
+
+                    string name = Refl.Str(subtype, "subtypeName");
+                    string title = Refl.Str(subtype, "title");
+                    PartInfo v = new PartInfo
+                    {
+                        Name = baseInfo.Name,
+                        Variant = name,
+                        Title = baseInfo.Title + " [" + (title.Length > 0 ? title : name) + "]",
+                        Source = baseInfo.Source,
+                        Sizes = baseInfo.Sizes,
+                        Tech = baseInfo.Tech,
+                        Cost = baseInfo.Cost,
+                        Kind = PartKind.Tank,
+                        DryMassT = baseInfo.DryMassT + ToDouble(Refl.Call(module, "GetDryMass", subtype)),
+                    };
+                    foreach (object res in Refl.Items(Refl.Get(tankType, "resources")))
+                    {
+                        string resName = Refl.Str(res, "ResourceName");
+                        if (resName.Length > 0) Add(v, resName, Refl.Num(res, "unitsPerVolume") * volume);
+                    }
+                    if (!HasFuel(v)) continue;
+                    v.WetMassT = v.DryMassT;
+                    foreach (ResourceAmount r in v.Resources) v.WetMassT += r.MassT;
+                    variants.Add(v);
+                }
+            }
+            return variants;
+        }
+
+        static double ToDouble(object value)
+        {
+            if (value == null) return 0;
+            try { return Convert.ToDouble(value); } catch { return 0; }
+        }
+
+        /// <summary>Lit la pièce telle que configurée par défaut. Kind vaut Tank pour toute pièce sans moteur ni découpleur.</summary>
+        static PartInfo DescribeBase(AvailablePart ap)
         {
             Part prefab = ap.partPrefab;
             PartInfo info = new PartInfo
@@ -172,21 +251,16 @@ namespace LaunchPlanner
                 return info;
             }
 
-            foreach (ResourceAmount r in info.Resources)
-                if (FuelResources.Contains(r.Name) && r.Amount > 0)
-                {
-                    info.Kind = PartKind.Tank;
-                    return info;
-                }
+            // Les cockpits et capsules embarquent du monergol mais ne sont pas des réservoirs.
+            if (HasModule(prefab, CommandModules)) return null;
 
-            return null;
+            info.Kind = PartKind.Tank;
+            return info;
         }
 
-        static bool HasModule(Part prefab, HashSet<string> classNames)
+        static bool HasModule(object prefab, HashSet<string> classNames)
         {
-            List<PartModule> modules = prefab.FindModulesImplementing<PartModule>();
-            if (modules == null) return false;
-            foreach (PartModule m in modules)
+            foreach (object m in Refl.Items(Refl.Get(prefab, "Modules")))
                 if (m != null && classNames.Contains(m.GetType().Name)) return true;
             return false;
         }
@@ -255,14 +329,14 @@ namespace LaunchPlanner
             string path = Path.Combine(directory, "inventaire.csv");
             CultureInfo ci = CultureInfo.InvariantCulture;
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine("type;nom;titre;source;tailles;tech;debloquee;cout;masse_seche_t;masse_pleine_t;poussee_vide_kN;poussee_sol_kN;isp_vide_s;isp_sol_s;ergols;ressources");
+            sb.AppendLine("type;nom;variante;titre;source;tailles;tech;debloquee;cout;masse_seche_t;masse_pleine_t;poussee_vide_kN;poussee_sol_kN;isp_vide_s;isp_sol_s;ergols;ressources");
             foreach (PartInfo p in Parts)
             {
                 List<string> res = new List<string>();
                 foreach (ResourceAmount r in p.Resources) res.Add(r.Name + "=" + r.Amount.ToString("0.##", ci));
                 sb.AppendLine(string.Join(";", new string[]
                 {
-                    p.Kind.ToString(), p.Name, p.Title.Replace(";", ","), p.Source, p.Sizes, p.Tech, p.Unlocked ? "oui" : "non",
+                    p.Kind.ToString(), p.Name, p.Variant, p.Title.Replace(";", ","), p.Source, p.Sizes, p.Tech, p.Unlocked ? "oui" : "non",
                     p.Cost.ToString("0", ci), p.DryMassT.ToString("0.###", ci), p.WetMassT.ToString("0.###", ci),
                     p.ThrustVacKN.ToString("0.#", ci), p.ThrustAslKN.ToString("0.#", ci),
                     p.IspVac.ToString("0", ci), p.IspAsl.ToString("0", ci), p.Propellants, string.Join(" ", res.ToArray()),
