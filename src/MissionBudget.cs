@@ -57,6 +57,7 @@ namespace LaunchPlanner
         public double Total;
         public double TotalWithMargin;
         public double PayloadDeltaV;
+        public double PayloadUsedDeltaV;   // part du Δv de la charge utile comptée dans la mission
         public double LauncherDeltaV;
 
         // Étage atterrisseur ajouté par le lanceur quand la charge utile ne peut pas se poser seule
@@ -142,6 +143,7 @@ namespace LaunchPlanner
             bool back = type == MissionType.LandingReturn || type == MissionType.OrbitReturn;
 
             Add(budget, "Décollage et orbite basse de " + home.Name, Ascent(home), "");
+            int arrival = 0;   // dernière étape du trajet jusqu'en orbite de la destination
 
             if (dest != home)
             {
@@ -155,6 +157,7 @@ namespace LaunchPlanner
                 {
                     Add(budget, "Injection vers " + dest.Name, outbound, "");
                     Add(budget, "Mise en orbite de " + dest.Name, capture, capNote);
+                    arrival = budget.Phases.Count - 1;
                     if (landing) AddLanding(budget, dest);
                     if (landing && back) Add(budget, "Décollage de " + dest.Name, Ascent(dest), "");
                     if (back)
@@ -203,9 +206,10 @@ namespace LaunchPlanner
                 return budget;
             }
 
-            // La charge utile assure les dernières phases de la mission, en remontant depuis la fin.
+            // Le lanceur amène la charge utile en orbite de la destination ; le Δv de la charge utile sert à ce qu'elle
+            // fait sur place (atterrissage, remontée, retour), en remontant depuis la fin, jamais au trajet.
             double remaining = budget.PayloadDeltaV;
-            for (int i = budget.Phases.Count - 1; i >= 1 && remaining > 0; i--)
+            for (int i = budget.Phases.Count - 1; i > arrival && remaining > 0; i--)
             {
                 Phase p = budget.Phases[i];
                 double need = p.DeltaV * (1 + margin);
@@ -214,6 +218,7 @@ namespace LaunchPlanner
                 remaining -= p.CoveredDeltaV;
             }
             budget.LauncherDeltaV = Math.Max(0, budget.TotalWithMargin - (budget.PayloadDeltaV - remaining));
+            budget.PayloadUsedDeltaV = budget.PayloadDeltaV - remaining;
 
             // Ce que la charge utile ne couvre pas à partir de l'atterrissage revient à un étage atterrisseur :
             // l'étage du haut d'un lanceur n'a ni jambes ni la poussée voulue pour se poser.

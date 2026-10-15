@@ -192,8 +192,10 @@ namespace LaunchPlanner
             GUILayout.Label(string.Format("Total : {0:0} m/s, soit {1:0} m/s avec la marge de {2} %.",
                 budget.Total, budget.TotalWithMargin, marginPercent));
             if (budget.PayloadDeltaV > 0)
-                GUILayout.Label(string.Format("La charge utile en assure {0:0} m/s.",
-                    Math.Min(budget.PayloadDeltaV, budget.TotalWithMargin - budget.LauncherDeltaV)));
+                GUILayout.Label(budget.PayloadUsedDeltaV > 0.5 || launcherLastPhase >= 0
+                    ? string.Format("La charge utile en assure {0:0} m/s sur place.", budget.PayloadUsedDeltaV)
+                    : string.Format("Les {0:0} m/s de la charge utile ne sont pas comptés : le lanceur l'amène jusqu'en orbite, elle les garde pour la suite.",
+                        budget.PayloadDeltaV));
             if (budget.LanderDeltaV > 0)
                 GUILayout.Label(string.Format("Ta charge utile ne peut pas se poser seule : un étage atterrisseur fournira {0:0} m/s sur {1}, " +
                     "avec des jambes et une poussée suffisante pour sa gravité.", budget.LanderDeltaV, budget.LanderBody));
