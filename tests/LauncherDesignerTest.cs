@@ -78,6 +78,16 @@ static class LauncherDesignerTest
             string[] l = limits.Split(',');
             req.MaxHeight = D(l[0]); req.MaxWidth = D(l[1]); req.MaxParts = (int)D(l[2]); req.MaxMass = D(l[3]);
         }
+        // LANDER=Δv,gravité : étage atterrisseur, avec les jambes du jeu de base
+        string lander = Environment.GetEnvironmentVariable("LANDER");
+        if (!string.IsNullOrEmpty(lander))
+        {
+            string[] l = lander.Split(',');
+            req.LanderDeltaV = D(l[0]); req.LanderGravity = D(l[1]); req.LanderBody = "test";
+            req.Legs.Add(new PartInfo { Name = "miniLandingLeg", Title = "LT-05", DryMassT = 0.015, Unlocked = true, Cost = 340 });
+            req.Legs.Add(new PartInfo { Name = "landingLeg1", Title = "LT-1", DryMassT = 0.05, Unlocked = true, Cost = 440 });
+            req.Legs.Add(new PartInfo { Name = "landingLeg1-2", Title = "LT-2", DryMassT = 0.1, Unlocked = true, Cost = 640 });
+        }
         Stopwatch sw = Stopwatch.StartNew();
         LauncherDesigner.Log = m => Console.Error.WriteLine(sw.ElapsedMilliseconds + " ms " + m);
         LauncherDesigner designer = new LauncherDesigner(req);
@@ -92,6 +102,10 @@ static class LauncherDesignerTest
             if (d.Stages.Count == 0) continue;
             Console.WriteLine("   masse {0:0.0} t, coût {1:0}, Δv {2:0} m/s, TWR décollage {3:0.00}", d.TotalMass, d.Cost, d.DeltaV, d.LiftoffTwr);
             Console.WriteLine("   hauteur {0:0.0} m, largeur {1:0.0} m, {2} pièces", d.HeightM, d.WidthM, d.PartCount);
+            if (d.Lander != null)
+                Console.WriteLine("   Atterrisseur (Ø {0}) : {1} × {2} ; {3} ; {4} × {5} ; Δv {6:0}, TWR {7:0.00}, {8:0.0} t",
+                    LauncherDesigner.Diameter(d.Lander.Size), d.Lander.EngineCount, d.Lander.Engine.Title, Tanks(d.Lander.Tanks),
+                    d.LanderLegCount, d.LanderLegs != null ? d.LanderLegs.Title : "-", d.Lander.DeltaV, d.Lander.Twr, d.Lander.TotalMass);
             for (int i = d.Stages.Count - 1; i >= 0; i--)
             {
                 StagePlan s = d.Stages[i];
@@ -113,7 +127,7 @@ static class LauncherDesignerTest
                 bad += CheckCraft(craft);
                 string path = System.IO.Path.Combine(craftDir, d.Variant.Replace(' ', '-') + ".craft");
                 System.IO.File.WriteAllText(path, CraftWriter.Write(builder, craft, d.Variant, "1.12.5").ToText());
-                Console.WriteLine("{0} : {1} pièces, {2} étages d'activation → {3}", d.Variant, craft.Count, builder.ActionCount, path);
+                Console.WriteLine("{0} : {1} pièces (estimé {4}), {2} étages d'activation → {3}", d.Variant, craft.Count, builder.ActionCount, path, d.PartCount);
                 foreach (string n in builder.Notes) Console.WriteLine("   note : " + n);
             }
         return bad == 0 ? 0 : 1;

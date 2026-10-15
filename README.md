@@ -61,6 +61,11 @@ Détails du montage :
 - au-delà d'un moteur par étage, les moteurs sont fixés en grappe sous le réservoir ;
 - en asperges, des conduites de carburant (FTX-2, si débloquées) relient chaque paire de boosters à la suivante,
   puis la dernière au corps central ; sinon le transfert passe par les découpleurs radiaux ;
+- chaque booster porte des fusées de séparation (Sepratron I, ou la plus proche débloquée), moitié en haut, moitié
+  en bas, en nombre adapté à sa masse à vide ; elles s'allument avec son découpleur et l'écartent de la fusée ;
+- pour une mission avec atterrissage, si le Δv de la charge utile ne couvre pas la descente (et la suite), un étage
+  atterrisseur est ajouté sous elle : moteur à vide, ergols qui se conservent, TWR ≥ 2 face à la gravité de la
+  destination, quatre jambes d'atterrissage ; le lanceur emporte alors la charge utile et l'atterrisseur ;
 - une copie du dernier lanceur généré est écrite dans `GameData/LaunchPlanner/dernier-lanceur.craft` : à joindre
   avec `KSP.log` en cas de problème.
 

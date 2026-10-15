@@ -22,6 +22,8 @@ namespace LaunchPlanner
         public double TankDry;          // masse à vide des réservoirs d'un booster (t)
         public PartInfo Decoupler;      // découpleur radial
         public double DecouplerMass;
+        public PartInfo Separator;      // fusée de séparation (Sepratron) qui écarte le booster largué
+        public int SeparatorsEach;      // nombre par booster, selon sa masse à vide
 
         public double DryEach
         {
@@ -87,6 +89,11 @@ namespace LaunchPlanner
         public List<string> Notes = new List<string>();
         public PartInfo PayloadDecoupler;   // découpleur entre la charge utile et le dernier étage
 
+        // Étage atterrisseur, sous la charge utile, quand elle ne peut pas se poser seule
+        public StagePlan Lander;
+        public PartInfo LanderLegs;
+        public int LanderLegCount;
+
         // Encombrement estimé, charge utile comprise
         public double HeightM;
         public double WidthM;
@@ -113,6 +120,13 @@ namespace LaunchPlanner
         public double PayloadHeight;    // m
         public double PayloadWidth;     // m
         public int PayloadParts;
+
+        // Étage atterrisseur (0 = la charge utile se pose seule)
+        public double LanderDeltaV;     // m/s que l'atterrisseur doit fournir
+        public double LanderGravity;    // m/s², gravité à la surface de la destination
+        public double LanderTwr = 2;    // TWR minimal face à cette gravité
+        public string LanderBody = "";
+        public List<PartInfo> Legs = new List<PartInfo>();   // jambes d'atterrissage débloquées
     }
 
     /// <summary>
@@ -159,6 +173,50 @@ namespace LaunchPlanner
             req = request;
             heightsKnown = request.Parts.Exists(p => p.HeightM > 0);
             Index();
+            separator = PickSeparator(request.Parts);
+        }
+
+        readonly PartInfo separator;
+
+        /// <summary>
+        /// Fusée de séparation débloquée : petit propulseur à poudre à fixer en surface, qui brûle quelques secondes.
+        /// Le Sepratron I est préféré, puis ce qui porte « sep » dans son nom, puis le plus léger.
+        /// </summary>
+        public static PartInfo PickSeparator(List<PartInfo> parts)
+        {
+            PartInfo best = null;
+            int bestRank = -1;
+            foreach (PartInfo p in parts)
+            {
+                if (!p.Unlocked || p.Kind != PartKind.Booster || (p.Sizes ?? "").Trim() != "srf") continue;
+                double burn = p.BurnTimeS;
+                if (p.ThrustVacKN <= 0 || p.ThrustVacKN > 100 || burn < 1 || burn > 15) continue;
+                string n = (p.Name + " " + p.Title).ToLowerInvariant();
+                int rank = p.Name == "sepMotor1" ? 2 : n.Contains("sep") ? 1 : 0;
+                if (rank > bestRank || (rank == bestRank && p.WetMassT < best.WetMassT)) { best = p; bestRank = rank; }
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// Nombre de fusées de séparation par booster : de quoi écarter le booster vide d'environ 12 m/s,
+        /// au moins une en haut et une en bas, toujours un nombre pair, au plus 8.
+        /// </summary>
+        public static int SeparatorCount(PartInfo sep, double boosterDryT)
+        {
+            if (sep == null) return 0;
+            double impulse = sep.ThrustVacKN * sep.BurnTimeS * 0.94;   // kN·s, inclinées de 20° vers l'arrière
+            int n = impulse > 0 ? (int)Math.Ceiling(boosterDryT * 12 / impulse) : 2;
+            n = Math.Max(2, n + (n & 1));
+            return Math.Min(8, n);
+        }
+
+        void AssignSeparators(LauncherDesign d)
+        {
+            BoosterPlan b = d.Stages.Count > 0 ? d.Stages[0].Boosters : null;
+            if (b == null || b.Count == 0) return;
+            b.Separator = separator;
+            b.SeparatorsEach = SeparatorCount(separator, b.Part.DryMassT + (b.Solid ? 0 : b.TankDry));
         }
 
         // ---------- Préparation des pièces ----------
@@ -827,6 +885,173 @@ namespace LaunchPlanner
 
         public List<LauncherDesign> Run()
         {
+            if (req.LanderDeltaV <= 0) return RunLauncher();
+
+            PartInfo legs;
+            string problem;
+            StagePlan lander = DesignLander(out legs, out problem);
+            if (lander == null)
+            {
+                List<LauncherDesign> none = new List<LauncherDesign>();
+                foreach (string[] v in Variants)
+                    none.Add(new LauncherDesign { Variant = v[0], Description = v[1], Problem = problem });
+                return none;
+            }
+            int legCount = legs != null ? LanderLegs : 0;
+            double mass = req.PayloadMass, height = req.PayloadHeight, width = req.PayloadWidth;
+            int parts = req.PayloadParts;
+            // Le lanceur emporte la charge utile et son atterrisseur.
+            req.PayloadMass += lander.TotalMass + legCount * (legs != null ? legs.DryMassT : 0);
+            req.PayloadHeight += TanksHeight(lander.Tanks) + HeightOf(lander.Engine);
+            req.PayloadWidth = Math.Max(req.PayloadWidth, CraftBuilder.DiameterOf(lander.Size) + 1);
+            req.PayloadParts += TankParts(lander.Tanks) + lander.EngineCount + legCount;
+            try
+            {
+                List<LauncherDesign> result = RunLauncher();
+                foreach (LauncherDesign d in result)
+                {
+                    d.Lander = lander;
+                    d.LanderLegs = legs;
+                    d.LanderLegCount = legCount;
+                }
+                return result;
+            }
+            finally
+            {
+                req.PayloadMass = mass;
+                req.PayloadHeight = height;
+                req.PayloadWidth = width;
+                req.PayloadParts = parts;
+            }
+        }
+
+        static readonly string[][] Variants =
+        {
+            new[] { "SSTO", "Un seul étage, sans largage." },
+            new[] { "Deux étages", "Deux étages empilés, sans boosters." },
+            new[] { "Boosters à poudre", "Deux étages et des propulseurs à poudre largués en vol." },
+            new[] { "Boosters liquides", "Deux étages et des boosters liquides largués ensemble." },
+            new[] { "Asperges", "Boosters liquides largués 2 par 2 ; chaque paire alimente le reste du lanceur avant d'être larguée." },
+        };
+
+        // ---------- Étage atterrisseur ----------
+
+        const int LanderLegs = 4;
+        const int MaxLanderEngines = 4;
+
+        /// <summary>
+        /// Jambes d'atterrissage : la plus légère qui porte la masse posée (environ 0,4 % de cette masse par jambe,
+        /// comme les jambes du jeu de base), sinon la plus robuste.
+        /// </summary>
+        PartInfo PickLegs(double landedMass)
+        {
+            PartInfo best = null, heaviest = null;
+            foreach (PartInfo l in req.Legs)
+            {
+                if (heaviest == null || l.DryMassT > heaviest.DryMassT) heaviest = l;
+                if (l.DryMassT >= 0.004 * landedMass && (best == null || l.DryMassT < best.DryMassT)) best = l;
+            }
+            return best ?? heaviest;
+        }
+
+        /// <summary>
+        /// Étage qui pose la charge utile et assure ce qu'elle ne peut pas faire seule (descente, puis remontée et retour
+        /// si la mission en comporte) : un ou quelques moteurs à vide, poussée suffisante face à la gravité de la destination,
+        /// ergols qui se conservent (pas d'hydrogène liquide, qui s'évapore pendant le trajet).
+        /// </summary>
+        StagePlan DesignLander(out PartInfo legs, out string problem)
+        {
+            legs = null;
+            problem = "Aucun moteur débloqué ne peut poser la charge utile sur " + req.LanderBody + ".";
+            StagePlan best = null;
+            double bestScore = double.MaxValue;
+            bool tooWeak = false;
+            foreach (PartInfo e in upperEngines)
+            {
+                string mix = engineMixture[e];
+                if (mix.Contains("LqdHydrogen")) continue;
+                for (int n = 1; n <= MaxLanderEngines; n++)
+                {
+                    if (n > 1 && !ClusterFits(mix, e, n)) continue;
+                    StagePlan s = MakeStage(e, n, 0, false);
+                    double ratio = TankRatio(mix, s.Size);
+                    double r = Math.Exp(req.LanderDeltaV / (e.IspVac * G0));
+                    if (ratio <= 0 || (r - 1) * ratio >= 1) continue;
+                    double legMass = 0, fuel = 0, m0 = 0;
+                    PartInfo leg = null;
+                    for (int iter = 0; iter < 3; iter++)
+                    {
+                        double fixedMass = req.PayloadMass + n * e.DryMassT + LanderLegs * legMass;
+                        fuel = (r - 1) * fixedMass / (1 - (r - 1) * ratio);
+                        m0 = fixedMass + fuel * (1 + ratio);
+                        leg = PickLegs(m0);
+                        legMass = leg != null ? leg.DryMassT : 0;
+                    }
+                    if (n * e.ThrustVacKN / (m0 * req.LanderGravity) < req.LanderTwr) { tooWeak = true; continue; }
+                    double cost = n * e.Cost + fuel * TankCostPerTonne(mix, s.Size);
+                    double score = (req.MinimizeCost ? cost : m0) * (1 + ClusterPenalty * (n - 1));
+                    if (score >= bestScore) continue;
+                    bestScore = score;
+                    SetFuel(s, fuel);
+                    best = s;
+                    legs = leg;
+                }
+            }
+            if (best == null)
+            {
+                if (tooWeak) problem = string.Format("Aucun moteur débloqué n'a assez de poussée pour poser la charge utile sur {0} (TWR {1:0.#} demandé).",
+                    req.LanderBody, req.LanderTwr);
+                return null;
+            }
+
+            // Vrais réservoirs : on augmente un peu les ergols jusqu'à couvrir le Δv demandé.
+            double wanted = best.Fuel;
+            for (int attempt = 0; attempt < 8; attempt++)
+            {
+                // Assez large pour porter la charge utile : un atterrisseur est trapu.
+                double minD = Math.Max(CraftBuilder.DiameterOf(ClusterSize(best.Mixture, best.Engine, best.EngineCount)), 0.5 * req.PayloadWidth);
+                best.Size = SquatSize(wanted, best.Mixture, minD) ??
+                    ChooseSize(wanted, best.Mixture, best.Engine, best.EngineCount, minD, double.MaxValue);
+                double got, dry;
+                best.Tanks = Fill(wanted, best.Mixture, best.Size, out got, out dry);
+                best.Fuel = got;
+                best.TankDry = dry;
+                if (LanderDeltaV(best, legs) >= req.LanderDeltaV - 1) break;
+                wanted *= 1.05;
+            }
+            best.DeltaV = LanderDeltaV(best, legs);
+            best.MassStart = req.PayloadMass + best.TotalMass + LanderLegs * (legs != null ? legs.DryMassT : 0);
+            best.Twr = best.EngineCount * best.Engine.ThrustVacKN / (best.MassStart * req.LanderGravity);
+            best.Cost = best.EngineCount * best.Engine.Cost + best.Fuel * TankCostPerTonne(best.Mixture, best.Size)
+                + LanderLegs * (legs != null ? legs.Cost : 0);
+            if (best.Tanks.Count == 0) { problem = "Aucun réservoir débloqué pour l'atterrisseur."; return null; }
+            return best;
+        }
+
+        /// <summary>Plus petit diamètre où les ergols tiennent en deux réservoirs au plus : un atterrisseur trapu, pas une tour.</summary>
+        string SquatSize(double fuel, string mixture, double minD)
+        {
+            Mixture mix;
+            if (!mixtures.TryGetValue(mixture, out mix)) return null;
+            foreach (string size in mix.Sizes)
+            {
+                double d = CraftBuilder.DiameterOf(size);
+                if (d < minD - 0.01 || (req.MaxWidth > 0 && d > req.MaxWidth)) continue;
+                double got, dry;
+                List<TankUse> tanks = Fill(fuel, mixture, size, out got, out dry);
+                if (tanks.Count > 0 && TankParts(tanks) <= 2 && got >= fuel * 0.98) return size;
+            }
+            return null;
+        }
+
+        double LanderDeltaV(StagePlan s, PartInfo legs)
+        {
+            double dry = req.PayloadMass + s.DryMass + LanderLegs * (legs != null ? legs.DryMassT : 0);
+            return s.Engine.IspVac * G0 * Math.Log((dry + s.Fuel) / dry);
+        }
+
+        List<LauncherDesign> RunLauncher()
+        {
             List<LauncherDesign> result = new List<LauncherDesign>();
             if (req.TargetDeltaV <= 0) return result;
             List<Upper> front = UpperFront();
@@ -1187,6 +1412,7 @@ namespace LaunchPlanner
         /// <summary>Hauteur, largeur et nombre de pièces du lanceur assemblé, charge utile comprise.</summary>
         void Measure(LauncherDesign d)
         {
+            AssignSeparators(d);
             double height = req.PayloadHeight + HeightOf(d.PayloadDecoupler);
             double width = req.PayloadWidth;
             int parts = req.PayloadParts + (d.PayloadDecoupler != null ? 1 : 0);
@@ -1207,7 +1433,7 @@ namespace LaunchPlanner
                     string bs = b.Solid || b.Tanks.Count == 0 ? SizeOf(b.Part) : SizeOf(b.Tanks[0].Tank);
                     boosterTop = Math.Max(boosterTop, bh);   // les boosters sont alignés sur le bas du premier étage
                     width = Math.Max(width, dia + 2 * CraftBuilder.DiameterOf(bs) + 0.2);
-                    parts += b.Count * ((b.Solid ? 0 : TankParts(b.Tanks)) + 1 + (b.Decoupler != null ? 1 : 0));
+                    parts += b.Count * ((b.Solid ? 0 : TankParts(b.Tanks)) + 1 + (b.Decoupler != null ? 1 : 0) + b.SeparatorsEach + (b.Crossfeed ? 1 : 0));
                 }
             }
             d.HeightM = Math.Max(height, boosterTop);

@@ -167,9 +167,10 @@ namespace LaunchPlanner
                 GUILayout.BeginHorizontal();
                 GUILayout.Label(p.Name + (p.Note.Length > 0 ? " (" + p.Note + ")" : ""), GUILayout.Width(280));
                 GUILayout.Label(p.DeltaV.ToString("0") + " m/s", GUILayout.Width(80));
+                string rest = p.LanderDeltaV > 0 ? "atterrisseur" : "lanceur";
                 string who = p.CoveredByPayload ? "charge utile"
-                    : p.CoveredDeltaV > 0 ? string.Format("charge utile ({0:0} m/s) + lanceur", p.CoveredDeltaV)
-                    : "lanceur";
+                    : p.CoveredDeltaV > 0 ? string.Format("charge utile ({0:0} m/s) + {1}", p.CoveredDeltaV, rest)
+                    : rest;
                 GUILayout.Label(who, GUILayout.Width(200));
                 GUILayout.EndHorizontal();
             }
@@ -193,8 +194,11 @@ namespace LaunchPlanner
             if (budget.PayloadDeltaV > 0)
                 GUILayout.Label(string.Format("La charge utile en assure {0:0} m/s.",
                     Math.Min(budget.PayloadDeltaV, budget.TotalWithMargin - budget.LauncherDeltaV)));
-            GUILayout.Label(string.Format("<size=16><b>Le lanceur doit fournir {0:0} m/s en emportant {1:0.00} t.</b></size>",
-                budget.LauncherDeltaV, payload.MassT), rich);
+            if (budget.LanderDeltaV > 0)
+                GUILayout.Label(string.Format("Ta charge utile ne peut pas se poser seule : un étage atterrisseur fournira {0:0} m/s sur {1}, " +
+                    "avec des jambes et une poussée suffisante pour sa gravité.", budget.LanderDeltaV, budget.LanderBody));
+            GUILayout.Label(string.Format("<size=16><b>Le lanceur doit fournir {0:0} m/s en emportant {1:0.00} t{2}.</b></size>",
+                budget.LauncherDeltaV, payload.MassT, budget.LanderDeltaV > 0 ? " et l'atterrisseur" : ""), rich);
 
             foreach (string w in budget.Warnings) GUILayout.Label("<color=#ffbf33>" + w + "</color>", rich);
             GUILayout.Label("Estimation par transferts de Hohmann ; la marge couvre les changements de plan et les corrections.");

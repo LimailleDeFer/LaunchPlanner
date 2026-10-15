@@ -67,9 +67,11 @@ namespace LaunchPlanner
 
         string Key()
         {
-            return string.Format(CultureInfo.InvariantCulture, "{0:0}|{1:0.00}|{2}|{3:0.00}|{4}|{5:0.0}|{6}",
+            Budget b = mission.Current;
+            return string.Format(CultureInfo.InvariantCulture, "{0:0}|{1:0.00}|{2}|{3:0.00}|{4}|{5:0.0}|{6}|{7:0}|{8:0.00}",
                 TargetDeltaV(), PayloadMass(), minimizeCost, minLiftoffTwr, PartInventory.Parts.Count,
-                mission.Payload.HeightM, mission.Payload.PartCount);
+                mission.Payload.HeightM, mission.Payload.PartCount,
+                b != null ? b.LanderDeltaV : 0, b != null ? b.LanderGravity : 0);
         }
 
         /// <summary>Appelé à chaque image tant que la fenêtre est ouverte : relance le calcul si la mission a changé.</summary>
@@ -140,6 +142,14 @@ namespace LaunchPlanner
                 req.PayloadHeight = mission.Payload.HeightM;
                 req.PayloadWidth = mission.Payload.WidthM;
                 req.PayloadParts = mission.Payload.PartCount;
+            }
+            Budget budget = mission.Current;
+            if (budget != null && budget.LanderDeltaV > 0)
+            {
+                req.LanderDeltaV = budget.LanderDeltaV;
+                req.LanderGravity = budget.LanderGravity;
+                req.LanderBody = budget.LanderBody;
+                req.Legs = LandingLegs.Unlocked();
             }
             designsDeltaV = req.TargetDeltaV;
             designsMass = req.PayloadMass;
@@ -292,7 +302,17 @@ namespace LaunchPlanner
             string dvColor = d.DeltaV >= designsDeltaV - 1 ? "#66ff66" : "#ff6666";
             Label(string.Format("Δv <color={0}><b>{1:0} m/s</b></color> pour {2:0} demandés", dvColor, d.DeltaV, designsDeltaV));
 
-            if (d.PayloadDecoupler != null) Label("<size=11>Sous la charge utile : 1 × " + d.PayloadDecoupler.Title + "</size>");
+            if (d.Lander != null)
+            {
+                StagePlan l = d.Lander;
+                Label(string.Format("<b>Atterrisseur</b> : {0:0.0} t · Δv {1:0} m/s · TWR {2:0.00} sur place",
+                    l.TotalMass + d.LanderLegCount * (d.LanderLegs != null ? d.LanderLegs.DryMassT : 0), l.DeltaV, l.Twr));
+                Label("  Ø " + LauncherDesigner.Diameter(l.Size) + " · " + l.EngineCount + " × " + l.Engine.Title);
+                foreach (TankUse t in l.Tanks) Label("  " + t.Count + " × " + t.Tank.Title);
+                if (d.LanderLegs != null) Label("  " + d.LanderLegCount + " × " + d.LanderLegs.Title);
+            }
+            if (d.PayloadDecoupler != null) Label("<size=11>" + (d.Lander != null ? "Sous l'atterrisseur" : "Sous la charge utile") +
+                " : 1 × " + d.PayloadDecoupler.Title + "</size>");
             for (int i = d.Stages.Count - 1; i >= 0; i--)
             {
                 StagePlan s = d.Stages[i];
@@ -310,6 +330,7 @@ namespace LaunchPlanner
                     Label("    1 × " + b.Part.Title);
                     if (!b.Solid) foreach (TankUse t in b.Tanks) Label("    " + t.Count + " × " + t.Tank.Title);
                     if (b.Decoupler != null) Label("    1 × " + b.Decoupler.Title);
+                    if (b.Separator != null && b.SeparatorsEach > 0) Label("    " + b.SeparatorsEach + " × " + b.Separator.Title);
                 }
             }
 

@@ -14,6 +14,7 @@ namespace LaunchPlanner
         public double Diameter = 1.25;
         public List<string> Modules = new List<string>();      // noms des modules, dans l'ordre du modèle
         public List<string> ModuleIds = new List<string>();    // moduleID (B9PartSwitch), "" sinon
+        public Vec3 ExhaustDir = new Vec3(0, -1, 0);           // sortie des gaz d'un moteur, dans le repère de la pièce
 
         public double Height { get { return TopNode != null && BottomNode != null ? TopY - BottomY : Diameter; } }
     }
@@ -41,6 +42,68 @@ namespace LaunchPlanner
         }
 
         public double Heading { get { return Math.Atan2(X, Z) * 180 / Math.PI; } }
+
+        public double Length { get { return Math.Sqrt(X * X + Y * Y + Z * Z); } }
+        public Vec3 Unit { get { double l = Length; return l > 1e-9 ? this * (1 / l) : new Vec3(0, 1, 0); } }
+        public static double Dot(Vec3 a, Vec3 b) { return a.X * b.X + a.Y * b.Y + a.Z * b.Z; }
+        public static Vec3 Cross(Vec3 a, Vec3 b) { return new Vec3(a.Y * b.Z - a.Z * b.Y, a.Z * b.X - a.X * b.Z, a.X * b.Y - a.Y * b.X); }
+    }
+
+    /// <summary>Quaternion au sens de Unity (x, y, z, w), pour les pièces qui ne sont pas seulement tournées autour de la verticale.</summary>
+    public struct Quat
+    {
+        public double X, Y, Z, W;
+
+        public Quat(double x, double y, double z, double w) { X = x; Y = y; Z = z; W = w; }
+
+        public static Quat FromYaw(double degrees)
+        {
+            double a = degrees * Math.PI / 360;
+            return new Quat(0, Math.Sin(a), 0, Math.Cos(a));
+        }
+
+        /// <summary>Plus petite rotation qui amène la direction `from` sur `to`.</summary>
+        public static Quat FromTo(Vec3 from, Vec3 to)
+        {
+            Vec3 a = from.Unit, b = to.Unit;
+            double d = Vec3.Dot(a, b);
+            if (d < -0.999999)
+            {
+                Vec3 axis = Vec3.Cross(new Vec3(1, 0, 0), a);
+                if (axis.Length < 1e-6) axis = Vec3.Cross(new Vec3(0, 1, 0), a);
+                axis = axis.Unit;
+                return new Quat(axis.X, axis.Y, axis.Z, 0);
+            }
+            Vec3 c = Vec3.Cross(a, b);
+            return new Quat(c.X, c.Y, c.Z, 1 + d).Normalized;
+        }
+
+        public Quat Normalized
+        {
+            get
+            {
+                double l = Math.Sqrt(X * X + Y * Y + Z * Z + W * W);
+                return new Quat(X / l, Y / l, Z / l, W / l);
+            }
+        }
+
+        public Quat Inverse { get { return new Quat(-X, -Y, -Z, W); } }
+
+        public static Quat operator *(Quat a, Quat b)
+        {
+            return new Quat(
+                a.W * b.X + a.X * b.W + a.Y * b.Z - a.Z * b.Y,
+                a.W * b.Y - a.X * b.Z + a.Y * b.W + a.Z * b.X,
+                a.W * b.Z + a.X * b.Y - a.Y * b.X + a.Z * b.W,
+                a.W * b.W - a.X * b.X - a.Y * b.Y - a.Z * b.Z);
+        }
+
+        public Vec3 Rotate(Vec3 v)
+        {
+            Vec3 u = new Vec3(X, Y, Z);
+            Vec3 t = Vec3.Cross(u, v) * 2;
+            return v + t * W + Vec3.Cross(u, t);
+        }
     }
 
     public enum AttachKind { Root, Stack, Surface }
@@ -52,6 +115,7 @@ namespace LaunchPlanner
         public PartShape Shape;
         public Vec3 Pos;
         public double Yaw;                  // rotation autour de la verticale, en degrés
+        public Quat? Tilted;                // rotation complète, quand la pièce n'est pas droite (fusées de séparation)
         public CraftPart Parent;
         public AttachKind Attach = AttachKind.Root;
         public string SelfNode;             // nœud de cette pièce tourné vers le parent
@@ -65,6 +129,8 @@ namespace LaunchPlanner
         public Vec3 TargetPoint;            // conduite de carburant : point d'arrivée sur la pièce alimentée
 
         public string Key { get { return Info.Name + "_" + Id; } }
+
+        public Quat Rotation { get { return Tilted ?? Quat.FromYaw(Yaw); } }
     }
 
     /// <summary>
@@ -153,15 +219,21 @@ namespace LaunchPlanner
             // (découpleur et allumage ensemble), enfin le largage de la charge utile.
             BoosterPlan boosters = d.Stages[0].Boosters;
             int boosterDrops = boosters == null || boosters.Count == 0 ? 0 : boosters.Crossfeed ? boosters.Count / 2 : 1;
-            actions = 1 + boosterDrops + (k - 1) + (d.PayloadDecoupler != null ? 1 : 0);
+            bool lander = d.Lander != null;
+            actions = 1 + boosterDrops + (k - 1) + (d.PayloadDecoupler != null ? 1 : 0) + (lander ? 1 : 0);
 
             CraftPart cursor = null;
+            if (lander) cursor = AddLander(d);
             if (d.PayloadDecoupler != null)
             {
-                cursor = Make(d.PayloadDecoupler);
-                cursor.Activation = actions - 1;
+                cursor = cursor == null ? Make(d.PayloadDecoupler) : StackBelowEngines(cursor, d.PayloadDecoupler);
+                cursor.Activation = actions - 1 - (lander ? 1 : 0);
             }
-            else Notes.Add("Aucun découpleur sous la charge utile : elle restera attachée au dernier étage.");
+            else
+            {
+                Notes.Add("Aucun découpleur sous la charge utile : elle restera attachée au dernier étage.");
+                if (lander) cursor = landerEngine ?? cursor;
+            }
 
             for (int i = k - 1; i >= 0; i--)
             {
@@ -204,6 +276,55 @@ namespace LaunchPlanner
 
             AssignSeparation();
             return parts;
+        }
+
+        CraftPart landerTank, landerEngine;
+
+        /// <summary>
+        /// Étage atterrisseur, racine du lanceur : la charge utile se fixe sur son réservoir du haut. Jambes en croix sur le
+        /// réservoir du bas ; le moteur s'allume après le largage du dernier étage du lanceur.
+        /// </summary>
+        CraftPart AddLander(LauncherDesign d)
+        {
+            StagePlan s = d.Lander;
+            CraftPart cursor = null;
+            foreach (TankUse t in s.Tanks)
+                for (int n = 0; n < t.Count; n++) cursor = cursor == null ? Make(t.Tank) : StackBelow(cursor, t.Tank);
+            List<CraftPart> engines = AddEngines(cursor, s, s.EngineCount, actions - 1);
+            landerTank = cursor;
+            landerEngine = engines.Count == 1 && engines[0].Attach == AttachKind.Stack ? engines[0] : null;
+
+            if (d.LanderLegs != null && d.LanderLegCount > 0)
+            {
+                List<CraftPart> legs = new List<CraftPart>();
+                double span = Top(cursor) - Bottom(cursor);
+                double y = Bottom(cursor) + Math.Min(0.4, 0.25 * span);
+                for (int i = 0; i < d.LanderLegCount; i++)
+                {
+                    Vec3 outward = new Vec3(0, 0, 1).Yaw(45 + 360.0 * i / d.LanderLegCount);
+                    Vec3 point = new Vec3(cursor.Pos.X, y, cursor.Pos.Z) + outward * (cursor.Shape.Diameter / 2);
+                    legs.Add(SurfaceAt(cursor, d.LanderLegs, point, outward));
+                }
+                SetSymmetry(legs);
+                Notes.Add(string.Format("Atterrisseur : {0} × {1} (touche G pour les déployer). Vérifie dans l'éditeur qu'elles descendent plus bas que la tuyère.",
+                    d.LanderLegCount, d.LanderLegs.Title));
+            }
+            else Notes.Add("Aucune jambe d'atterrissage débloquée : l'atterrisseur se posera sur sa tuyère.");
+            return cursor;
+        }
+
+        /// <summary>Découpleur sous l'atterrisseur : sous son moteur central, sinon sous son réservoir (moteurs en couronne).</summary>
+        CraftPart StackBelowEngines(CraftPart tank, PartInfo decoupler)
+        {
+            CraftPart below = landerEngine ?? tank;
+            CraftPart dec = StackBelow(below, decoupler);
+            if (landerEngine == null)
+            {
+                double lowest = Bottom(tank);
+                foreach (CraftPart c in tank.Children) if (c.Info.Kind == PartKind.Engine) lowest = Math.Min(lowest, Bottom(c));
+                dec.Pos.Y -= Bottom(tank) - lowest;
+            }
+            return dec;
         }
 
         /// <summary>Moteurs sous le dernier réservoir : un au centre sur le nœud, les autres en couronne fixés en surface.</summary>
@@ -319,6 +440,7 @@ namespace LaunchPlanner
                 cur.Activation = 0;
                 perBooster.Add(mine);
             }
+            List<List<CraftPart>> separators = AddSeparators(perBooster, b, host);
 
             // Symétrie : tous les boosters ensemble, ou paire par paire pour les asperges.
             int groups = b.Crossfeed ? b.Count / 2 : 1;
@@ -330,9 +452,68 @@ namespace LaunchPlanner
                         if (!b.Crossfeed || i % groups == g) set.Add(perBooster[i][j]);
                     SetSymmetry(set);
                 }
+            for (int g = 0; g < groups; g++)
+                for (int j = 0; j < b.SeparatorsEach && separators[0].Count > j; j++)
+                {
+                    List<CraftPart> set = new List<CraftPart>();
+                    for (int i = 0; i < b.Count; i++)
+                        if (!b.Crossfeed || i % groups == g) set.Add(separators[i][j]);
+                    SetSymmetry(set);
+                }
             if (b.Crossfeed && FuelLine != null) AddFuelLines(perBooster, b, groups, host);
             else if (b.Crossfeed)
                 Notes.Add("Aucune conduite de carburant débloquée : le transfert passe par les découpleurs radiaux, les paires extérieures se vident en premier.");
+        }
+
+        /// <summary>
+        /// Fusées de séparation : moitié en haut du booster, moitié en bas, côté extérieur, tuyère vers le corps central
+        /// et un peu vers le haut. Elles poussent le booster vide vers l'extérieur et vers l'arrière, à l'allumage de son découpleur.
+        /// </summary>
+        List<List<CraftPart>> AddSeparators(List<List<CraftPart>> perBooster, BoosterPlan b, CraftPart core)
+        {
+            List<List<CraftPart>> all = new List<List<CraftPart>>();
+            foreach (List<CraftPart> unused in perBooster) all.Add(new List<CraftPart>());
+            if (b.Decoupler == null) return all;
+            if (b.SeparatorsEach <= 0 || b.Separator == null)
+            {
+                Notes.Add("Aucune fusée de séparation débloquée (Sepratron) : les boosters largués risquent de toucher la fusée.");
+                return all;
+            }
+            int first = 1;
+            int perEnd = b.SeparatorsEach / 2;
+            for (int i = 0; i < perBooster.Count; i++)
+            {
+                List<CraftPart> mine = perBooster[i];
+                CraftPart topPart = mine[first];
+                // En bas : le dernier réservoir (booster liquide) ou le propulseur à poudre lui-même.
+                CraftPart bottomPart = b.Solid ? mine[mine.Count - 1] : mine[Math.Max(first, mine.Count - 2)];
+                int activation = mine[0].Activation;
+                Vec3 outward = new Vec3(mine[first].Pos.X - core.Pos.X, 0, mine[first].Pos.Z - core.Pos.Z).Unit;
+                // Gaz vers le corps central et 20° vers le haut : poussée vers l'extérieur et légèrement freinante.
+                Vec3 exhaust = outward * -Math.Cos(20 * Math.PI / 180) + new Vec3(0, Math.Sin(20 * Math.PI / 180), 0);
+                for (int end = 0; end < 2; end++)
+                {
+                    CraftPart host = end == 0 ? topPart : bottomPart;
+                    double span = Top(host) - Bottom(host);
+                    double y = end == 0 ? Top(host) - Math.Min(0.6, 0.15 * span) : Bottom(host) + Math.Min(0.6, 0.15 * span);
+                    for (int k = 0; k < perEnd; k++)
+                    {
+                        // Réparties sur la face extérieure, à ±35° au plus de l'axe.
+                        double spread = perEnd == 1 ? 0 : -35 + 70.0 * k / (perEnd - 1);
+                        Vec3 normal = outward.Yaw(spread);
+                        Vec3 point = new Vec3(host.Pos.X, y, host.Pos.Z) + normal * (host.Shape.Diameter / 2);
+                        CraftPart sep = SurfaceAt(host, b.Separator, point, normal);
+                        Quat upright = Quat.FromYaw(sep.Yaw);
+                        Quat rot = Quat.FromTo(upright.Rotate(sep.Shape.ExhaustDir), exhaust) * upright;
+                        sep.Tilted = rot;
+                        sep.Pos = point - rot.Rotate(sep.Shape.SrfPos);
+                        sep.Activation = activation;
+                        all[i].Add(sep);
+                    }
+                }
+            }
+            Notes.Add(string.Format("{0} {1} par booster l'écartent de la fusée au largage.", b.SeparatorsEach, b.Separator.Title));
+            return all;
         }
 
         /// <summary>

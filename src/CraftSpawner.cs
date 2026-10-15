@@ -35,6 +35,14 @@ namespace LaunchPlanner
                     shape.SrfPos = new Vec3(p.x, p.y, p.z);
                     shape.SrfDir = new Vec3(o.x, o.y, o.z);
                 }
+                // Sens de sortie des gaz (fusées de séparation inclinées) : axe avant du point de poussée, dans le repère de la pièce.
+                ModuleEngines engine = prefab.FindModuleImplementing<ModuleEngines>();
+                Transform thrust = engine != null ? prefab.FindModelTransform(engine.thrustVectorTransformName) : null;
+                if (thrust != null)
+                {
+                    Vector3 d = prefab.transform.InverseTransformDirection(thrust.forward);
+                    if (d.sqrMagnitude > 0.01f) shape.ExhaustDir = new Vec3(d.x, d.y, d.z);
+                }
                 foreach (PartModule m in prefab.Modules)
                 {
                     shape.Modules.Add(m.moduleName);

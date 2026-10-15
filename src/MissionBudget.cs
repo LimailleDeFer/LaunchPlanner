@@ -46,6 +46,8 @@ namespace LaunchPlanner
         public string Note = "";
         public bool CoveredByPayload;
         public double CoveredDeltaV;
+        public double LanderDeltaV;     // part assurée par l'étage atterrisseur
+        public bool Landing;            // atterrissage sur la destination
     }
 
     public class Budget
@@ -56,6 +58,11 @@ namespace LaunchPlanner
         public double TotalWithMargin;
         public double PayloadDeltaV;
         public double LauncherDeltaV;
+
+        // Étage atterrisseur ajouté par le lanceur quand la charge utile ne peut pas se poser seule
+        public double LanderDeltaV;
+        public double LanderGravity;
+        public string LanderBody = "";
     }
 
     /// <summary>
@@ -207,6 +214,28 @@ namespace LaunchPlanner
                 remaining -= p.CoveredDeltaV;
             }
             budget.LauncherDeltaV = Math.Max(0, budget.TotalWithMargin - (budget.PayloadDeltaV - remaining));
+
+            // Ce que la charge utile ne couvre pas à partir de l'atterrissage revient à un étage atterrisseur :
+            // l'étage du haut d'un lanceur n'a ni jambes ni la poussée voulue pour se poser.
+            int landingPhase = budget.Phases.FindIndex(p => p.Landing);
+            if (landing && landingPhase >= 1 && dest.HasSurface)
+            {
+                double lander = 0;
+                for (int i = landingPhase; i < budget.Phases.Count; i++)
+                {
+                    Phase p = budget.Phases[i];
+                    double missing = p.DeltaV * (1 + margin) - p.CoveredDeltaV;
+                    if (missing > 0.5) { p.LanderDeltaV = missing; lander += missing; }
+                }
+                if (lander >= 30)
+                {
+                    budget.LanderDeltaV = lander;
+                    budget.LanderGravity = dest.SurfaceGravity;
+                    budget.LanderBody = dest.Name;
+                    budget.LauncherDeltaV = Math.Max(0, budget.LauncherDeltaV - lander);
+                }
+                else foreach (Phase p in budget.Phases) p.LanderDeltaV = 0;
+            }
             return budget;
         }
 
@@ -215,6 +244,7 @@ namespace LaunchPlanner
             string note;
             double dv = Landing(b, out note);
             Add(budget, "Atterrissage sur " + b.Name, dv, note);
+            budget.Phases[budget.Phases.Count - 1].Landing = true;
         }
 
         static void Add(Budget budget, string name, double dv, string note)

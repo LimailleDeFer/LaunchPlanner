@@ -56,8 +56,12 @@ namespace LaunchPlanner
 
         static string Q(double yawDegrees)
         {
-            double a = yawDegrees * Math.PI / 360;
-            return "0," + F(Math.Sin(a)) + ",0," + F(Math.Cos(a));
+            return Q(Quat.FromYaw(yawDegrees));
+        }
+
+        static string Q(Quat q)
+        {
+            return F(q.X) + "," + F(q.Y) + "," + F(q.Z) + "," + F(q.W);
         }
 
         /// <summary>
@@ -83,8 +87,8 @@ namespace LaunchPlanner
             foreach (CraftPart p in parts)
             {
                 CraftNode n = ship.AddNode("PART");
-                Vec3 local = p.Parent == null ? p.Pos : (p.Pos - p.Parent.Pos).Yaw(-p.Parent.Yaw);
-                double localYaw = p.Parent == null ? p.Yaw : p.Yaw - p.Parent.Yaw;
+                Vec3 local = p.Parent == null ? p.Pos : p.Parent.Rotation.Inverse.Rotate(p.Pos - p.Parent.Pos);
+                Quat localRot = p.Parent == null ? p.Rotation : p.Parent.Rotation.Inverse * p.Rotation;
                 int stage = builder.InverseStage(p.Activation);
                 int sep = builder.InverseStage(p.Separation);
                 if (stage >= 0) stage += stageOffset;
@@ -95,9 +99,9 @@ namespace LaunchPlanner
                     .Add("pos", V(p.Pos + offset))
                     .Add("attPos", "0,0,0")
                     .Add("attPos0", V(local))
-                    .Add("rot", Q(p.Yaw))
+                    .Add("rot", Q(p.Rotation))
                     .Add("attRot", "0,0,0,1")
-                    .Add("attRot0", Q(localYaw))
+                    .Add("attRot0", Q(localRot))
                     .Add("mir", "1,1,1")
                     .Add("symMethod", "Radial")
                     .Add("autostrutMode", "Off")
