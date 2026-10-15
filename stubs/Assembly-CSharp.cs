@@ -27,29 +27,32 @@ public class KSPAddon : Attribute
     public KSPAddon(Startup startup, bool once) { }
 }
 
-public class ApplicationLauncherButton : MonoBehaviour
+namespace KSP.UI.Screens
 {
-    public void SetFalse(bool makeCall) { }
-}
-
-public class ApplicationLauncher : MonoBehaviour
-{
-    [Flags]
-    public enum AppScenes
+    public class ApplicationLauncherButton : MonoBehaviour
     {
-        NEVER = 0,
-        SPACECENTER = 1,
-        FLIGHT = 2,
-        MAPVIEW = 4,
-        VAB = 8,
-        SPH = 16,
-        TRACKSTATION = 32,
+        public void SetFalse(bool makeCall) { }
     }
 
-    public ApplicationLauncherButton AddModApplication(Callback onTrue, Callback onFalse, Callback onHover, Callback onHoverOut,
-        Callback onEnable, Callback onDisable, AppScenes visibleInScenes, Texture texture) { return null; }
+    public class ApplicationLauncher : MonoBehaviour
+    {
+        [Flags]
+        public enum AppScenes
+        {
+            NEVER = 0,
+            SPACECENTER = 1,
+            FLIGHT = 2,
+            MAPVIEW = 4,
+            VAB = 8,
+            SPH = 16,
+            TRACKSTATION = 32,
+        }
 
-    public void RemoveModApplication(ApplicationLauncherButton button) { }
+        public ApplicationLauncherButton AddModApplication(Callback onTrue, Callback onFalse, Callback onHover, Callback onHoverOut,
+            Callback onEnable, Callback onDisable, AppScenes visibleInScenes, Texture texture) { return null; }
+
+        public void RemoveModApplication(ApplicationLauncherButton button) { }
+    }
 }
 
 public class ConfigNode
