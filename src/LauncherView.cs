@@ -84,8 +84,8 @@ namespace LaunchPlanner
                 {
                     string error = CraftSpawner.Spawn(d, buildNotes);
                     buildMessage = error != null ? "<color=#ff6666>" + error + "</color>"
-                        : "<color=#66ff66>Le lanceur « " + d.Variant + " » est accroché à ta souris : clique sous ta charge utile " +
-                          "pour le fixer par le découpleur du haut (ou dans le vide s'il n'y a pas encore de vaisseau).</color>";
+                        : "<color=#66ff66>Le lanceur « " + d.Variant + " » est fixé sous ta charge utile, étages compris. " +
+                          "Pour revenir en arrière, charge le vaisseau « Avant lanceur ».</color>";
                 }
                 catch (Exception e)
                 {

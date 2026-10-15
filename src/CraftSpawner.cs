@@ -155,15 +155,18 @@ namespace LaunchPlanner
             return null;
         }
 
-        /// <summary>Copie du vaisseau avant l'ajout du lanceur, pour revenir en arrière (GameData/LaunchPlanner/avant-lanceur.craft).</summary>
+        /// <summary>Copie du vaisseau avant l'ajout du lanceur, pour revenir en arrière (vaisseau « Avant lanceur » de la partie).</summary>
         static void Backup(ConfigNode shipNode)
         {
             try
             {
-                string dir = Path.Combine(KSPUtil.ApplicationRootPath, "GameData/LaunchPlanner");
+                // Dans les vaisseaux de la partie : il se recharge depuis le bouton « Charger » de l'éditeur.
+                string dir = Path.Combine(KSPUtil.ApplicationRootPath, "saves/" + HighLogic.SaveFolder + "/Ships/VAB");
                 Directory.CreateDirectory(dir);
-                BackupPath = Path.Combine(dir, "avant-lanceur.craft");
-                shipNode.Save(BackupPath);
+                BackupPath = Path.Combine(dir, "Avant lanceur.craft");
+                ConfigNode copy = shipNode.CreateCopy();
+                copy.SetValue("ship", "Avant lanceur", true);
+                copy.Save(BackupPath);
             }
             catch (Exception e)
             {

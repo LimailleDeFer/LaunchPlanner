@@ -51,15 +51,16 @@ Le budget est une estimation par transferts de Hohmann, proche de la carte Δv c
 ## Utilisation (étape 4)
 
 1. Dans l'onglet « Lanceurs », choisis une variante puis clique « Construire dans l'éditeur ».
-2. Le lanceur apparaît accroché à la souris, comme un sous-assemblage. Approche son découpleur du haut du nœud
-   du bas de ta charge utile et clique pour le fixer (sans vaisseau dans l'éditeur, clique dans le vide : il devient le vaisseau).
-3. Vérifie l'ordre des étages dans la colonne de droite : décollage, largage des boosters, puis chaque étage.
+2. Le lanceur est fixé sous la pièce la plus basse de ta charge utile (nœud du bas libre) et le vaisseau est rechargé,
+   séquence d'étages comprise : décollage, largage des boosters, chaque étage, puis les étages de la charge utile.
+   Sans vaisseau dans l'éditeur, le lanceur seul devient le vaisseau.
+3. Pour revenir en arrière, charge le vaisseau « Avant lanceur » (copie enregistrée juste avant).
 
 Détails du montage :
 - les réservoirs commutables (B9PartSwitch, CryoTanks) sont réglés sur le bon contenu ;
 - au-delà d'un moteur par étage, les moteurs sont fixés en grappe sous le réservoir ;
-- en asperges, le transfert de carburant est activé sur les découpleurs radiaux : le jeu vide d'abord les paires
-  larguées en premier ;
+- en asperges, des conduites de carburant (FTX-2, si débloquées) relient chaque paire de boosters à la suivante,
+  puis la dernière au corps central ; sinon le transfert passe par les découpleurs radiaux ;
 - une copie du dernier lanceur généré est écrite dans `GameData/LaunchPlanner/dernier-lanceur.craft` : à joindre
   avec `KSP.log` en cas de problème.
 
