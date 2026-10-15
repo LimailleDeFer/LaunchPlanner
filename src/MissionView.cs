@@ -18,7 +18,8 @@ namespace LaunchPlanner
         bool manualDeltaV;
         string manualDeltaVText = "0";
         float nextPayloadRead;
-        int launcherLastPhase = -1;   // -1 : selon le Δv de la charge utile
+        bool[] payloadPhases;         // étapes confiées à la charge utile ; null : répartition automatique
+        string phasesKey = "";
 
         GUIStyle rich;
 
@@ -51,8 +52,20 @@ namespace LaunchPlanner
         Budget ComputeBudget()
         {
             if (destination == null || KspBodies.Home == null) return Current = null;
-            return Current = MissionBudget.Compute(KspBodies.Home, destination, (MissionType)missionType, marginPercent / 100.0, PayloadDeltaV(),
-                launcherLastPhase);
+            Budget b = MissionBudget.Compute(KspBodies.Home, destination, (MissionType)missionType, marginPercent / 100.0, PayloadDeltaV(),
+                payloadPhases);
+            // Une autre destination ou un autre type de mission change les étapes : on revient à la répartition automatique.
+            string key = string.Join("|", b.Phases.ConvertAll(p => p.Name).ToArray());
+            if (key != phasesKey)
+            {
+                phasesKey = key;
+                if (payloadPhases != null)
+                {
+                    payloadPhases = null;
+                    b = MissionBudget.Compute(KspBodies.Home, destination, (MissionType)missionType, marginPercent / 100.0, PayloadDeltaV());
+                }
+            }
+            return Current = b;
         }
 
         void Bold(string text, params GUILayoutOption[] options)
@@ -158,15 +171,26 @@ namespace LaunchPlanner
             GUILayout.BeginHorizontal();
             Bold("Étape", GUILayout.Width(280));
             Bold("Δv", GUILayout.Width(80));
+            Bold("Charge utile ?", GUILayout.Width(110));
             Bold("Assuré par", GUILayout.Width(200));
             GUILayout.EndHorizontal();
 
+            bool[] toggled = null;
             phaseScroll = GUILayout.BeginScrollView(phaseScroll, GUILayout.Height(170));
-            foreach (Phase p in budget.Phases)
+            for (int i = 0; i < budget.Phases.Count; i++)
             {
+                Phase p = budget.Phases[i];
                 GUILayout.BeginHorizontal();
                 GUILayout.Label(p.Name + (p.Note.Length > 0 ? " (" + p.Note + ")" : ""), GUILayout.Width(280));
                 GUILayout.Label(p.DeltaV.ToString("0") + " m/s", GUILayout.Width(80));
+                // Case : cette étape est faite par la charge utile (le décollage reste toujours au lanceur).
+                if (i == 0) GUILayout.Label("", GUILayout.Width(110));
+                else if (GUILayout.Toggle(p.CoveredByPayload, "", GUILayout.Width(110)) != p.CoveredByPayload)
+                {
+                    toggled = new bool[budget.Phases.Count];
+                    for (int j = 0; j < toggled.Length; j++) toggled[j] = budget.Phases[j].CoveredByPayload;
+                    toggled[i] = !p.CoveredByPayload;
+                }
                 string rest = p.LanderDeltaV > 0 ? "atterrisseur" : "lanceur";
                 string who = p.CoveredByPayload ? "charge utile"
                     : p.CoveredDeltaV > 0 ? string.Format("charge utile ({0:0} m/s) + {1}", p.CoveredDeltaV, rest)
@@ -176,24 +200,23 @@ namespace LaunchPlanner
             }
             GUILayout.EndScrollView();
 
-            // Jusqu'où le lanceur emmène la charge utile (par exemple : un atterrisseur qui fait lui-même la suite).
-            GUILayout.Label("Le lanceur emmène la charge utile jusqu'à :");
-            string[] choices = new string[budget.Phases.Count + 1];
-            choices[0] = "Automatique (selon son Δv)";
-            for (int i = 0; i < budget.Phases.Count; i++) choices[i + 1] = "Fin de : " + budget.Phases[i].Name;
-            if (launcherLastPhase >= budget.Phases.Count) launcherLastPhase = -1;
-            int choice = GUILayout.SelectionGrid(launcherLastPhase + 1, choices, 2);
-            if (choice != launcherLastPhase + 1)
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(payloadPhases == null
+                ? "Répartition automatique : ta charge utile fait ce qui se passe sur place, selon son Δv. Coche ou décoche une étape pour choisir toi-même."
+                : "Répartition choisie à la main.", GUILayout.Width(560));
+            if (payloadPhases != null && GUILayout.Button("Automatique", GUILayout.Width(100))) { payloadPhases = null; budget = ComputeBudget(); }
+            GUILayout.EndHorizontal();
+            if (toggled != null)
             {
-                launcherLastPhase = choice - 1;
+                payloadPhases = toggled;
                 budget = ComputeBudget();
             }
 
             GUILayout.Label(string.Format("Total : {0:0} m/s, soit {1:0} m/s avec la marge de {2} %.",
                 budget.Total, budget.TotalWithMargin, marginPercent));
             if (budget.PayloadDeltaV > 0)
-                GUILayout.Label(budget.PayloadUsedDeltaV > 0.5 || launcherLastPhase >= 0
-                    ? string.Format("La charge utile en assure {0:0} m/s sur place.", budget.PayloadUsedDeltaV)
+                GUILayout.Label(budget.PayloadUsedDeltaV > 0.5 || payloadPhases != null
+                    ? string.Format("La charge utile assure {0:0} m/s des étapes, sur les {1:0} m/s qu'elle a.", budget.PayloadUsedDeltaV, budget.PayloadDeltaV)
                     : string.Format("Les {0:0} m/s de la charge utile ne sont pas comptés : le lanceur l'amène jusqu'en orbite, elle les garde pour la suite.",
                         budget.PayloadDeltaV));
             if (budget.LanderDeltaV > 0)

@@ -12,7 +12,7 @@ que les pièces débloquées, y compris celles des autres mods.
 2. **Budget Δv de la mission (fait)** : onglet « Mission ». On choisit la destination et le type de mission ;
    le vaisseau ouvert dans l'éditeur sert de charge utile. Le lanceur l'amène toujours jusqu'en orbite de la
    destination ; le Δv propre de la charge utile ne sert qu'à ce qu'elle fait sur place (atterrissage, remontée,
-   retour), jamais au trajet.
+   retour), jamais au trajet. Une case par étape permet de choisir soi-même ce que fait la charge utile.
 3. **Recommandation du lanceur (fait)** : onglet « Lanceurs ». Cinq variantes côte à côte (SSTO, deux étages,
    boosters à poudre, boosters liquides, asperges), chacune avec ses pièces exactes, sa masse, son coût,
    son Δv et son TWR par étage.
