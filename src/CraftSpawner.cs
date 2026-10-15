@@ -46,12 +46,16 @@ namespace LaunchPlanner
         }
     }
 
-    /// <summary>Construit la variante choisie et la met « en main » dans l'éditeur, comme un sous-assemblage.</summary>
+    /// <summary>
+    /// Construit la variante choisie. S'il y a une charge utile dans l'éditeur, le lanceur est fixé sous sa pièce la plus basse
+    /// (nœud du bas libre) et ses étages passent avant ceux de la charge utile ; le vaisseau complet est ensuite rechargé.
+    /// </summary>
     public static class CraftSpawner
     {
         public static string LastCraftPath = "";
+        public static string BackupPath = "";
 
-        /// <summary>Renvoie un message d'erreur, ou null si le lanceur est en main dans l'éditeur.</summary>
+        /// <summary>Renvoie un message d'erreur, ou null si le lanceur est en place dans l'éditeur.</summary>
         public static string Spawn(LauncherDesign design, List<string> notes)
         {
             EditorLogic editor = EditorLogic.fetch;
@@ -59,18 +63,112 @@ namespace LaunchPlanner
             if (EditorLogic.SelectedPart != null) return "Repose d'abord la pièce que tu tiens, puis recommence.";
             if (design == null || design.Stages.Count == 0) return "Aucune variante choisie.";
 
-            CraftBuilder builder = new CraftBuilder(new KspPartShapes());
+            KspPartShapes shapes = new KspPartShapes();
+            CraftBuilder builder = new CraftBuilder(shapes) { FuelLine = FuelLine() };
             List<CraftPart> parts = builder.Build(design);
             notes.AddRange(builder.Notes);
-            CraftNode craft = CraftWriter.Write(builder, parts, "Lanceur " + design.Variant, GameVersion());
-            string text = craft.ToText();
-            // On relit le fichier écrit, exactement comme le jeu charge un .craft.
-            ConfigNode node = SaveCopy(text) ? ConfigNode.Load(LastCraftPath) : ConfigNode.Parse(text);
-            if (node == null) return "Lecture du lanceur généré impossible.";
-            ShipConstruct construct = new ShipConstruct();
-            if (!construct.LoadShip(node)) return "Le jeu n'a pas pu assembler le lanceur (détails dans KSP.log).";
-            editor.SpawnConstruct(construct);
+
+            ShipConstruct ship = editor.ship;
+            ConfigNode result;
+            if (ship != null && ship.parts != null && ship.parts.Count > 0)
+            {
+                string error = AttachUnder(ship, builder, parts, out result);
+                if (error != null) return error;
+            }
+            else
+            {
+                result = ConfigNode.Parse(CraftWriter.Write(builder, parts, "Lanceur " + design.Variant, GameVersion()).ToText());
+            }
+            if (result == null) return "Lecture du lanceur généré impossible.";
+            if (!Save(result)) return "Impossible d'écrire le vaisseau dans GameData/LaunchPlanner.";
+            EditorLogic.LoadShipFromFile(LastCraftPath);
             return null;
+        }
+
+        /// <summary>Conduite de carburant FTX-2 si elle est débloquée.</summary>
+        static PartInfo FuelLine()
+        {
+            AvailablePart ap = PartLoader.getPartInfoByName("fuelLine");
+            if (ap == null) return null;
+            if (PartInventory.SafeHasResearch() && !PartInventory.SafePurchased(ap)) return null;
+            return new PartInfo { Name = ap.name, Title = ap.title, Kind = PartKind.Tank, Cost = ap.cost };
+        }
+
+        static string Key(Part p)
+        {
+            return p.partInfo.name + "_" + p.craftID;
+        }
+
+        /// <summary>Ajoute le lanceur sous la charge utile, dans le vaisseau sauvegardé tel que l'éditeur l'enregistre.</summary>
+        static string AttachUnder(ShipConstruct ship, CraftBuilder builder, List<CraftPart> parts, out ConfigNode result)
+        {
+            result = null;
+            // Nœud empilé libre, tourné vers le bas, le plus bas du vaisseau.
+            Part host = null;
+            AttachNode hostNode = null;
+            Vector3 hostPoint = Vector3.zero;
+            foreach (Part p in ship.parts)
+                foreach (AttachNode n in p.attachNodes)
+                {
+                    if (n == null || n.nodeType != AttachNode.NodeType.Stack || n.attachedPart != null) continue;
+                    Vector3 dir = p.transform.TransformDirection(n.orientation);
+                    if (dir.y > -0.5f) continue;
+                    Vector3 point = p.transform.TransformPoint(n.position);
+                    if (host == null || point.y < hostPoint.y) { host = p; hostNode = n; hostPoint = point; }
+                }
+            if (host == null)
+                return "Ta charge utile n'a pas de nœud libre en bas : retire ce qui est fixé sous sa dernière pièce, puis recommence.";
+
+            CraftPart root = parts[0];
+            double rootTop = root.Shape.TopNode != null ? root.Shape.TopY : root.Shape.Height / 2;
+            Vec3 offset = new Vec3(hostPoint.x - root.Pos.X, hostPoint.y - rootTop - root.Pos.Y, hostPoint.z - root.Pos.Z);
+
+            // Les étages de la charge utile restent les derniers ; ceux du lanceur passent avant.
+            int payloadStages = 0;
+            foreach (Part p in ship.parts) payloadStages = Math.Max(payloadStages, p.inverseStage + 1);
+
+            ConfigNode shipNode = ship.SaveShip();
+            Backup(shipNode);
+            ConfigNode launcher = ConfigNode.Parse(CraftWriter.Write(builder, parts, ship.shipName, GameVersion(), offset, payloadStages).ToText());
+            if (launcher == null) return "Lecture du lanceur généré impossible.";
+
+            string hostKey = Key(host);
+            ConfigNode hostPart = null;
+            foreach (ConfigNode n in shipNode.GetNodes("PART"))
+                if (n.GetValue("part") == hostKey) hostPart = n;
+            if (hostPart == null) return "Pièce de la charge utile introuvable dans le vaisseau sauvegardé.";
+
+            ConfigNode[] launcherParts = launcher.GetNodes("PART");
+            ConfigNode rootNode = launcherParts[0];
+            // Le découpleur du haut devient l'enfant de la pièce la plus basse de la charge utile.
+            Vector3 rootWorld = new Vector3((float)(root.Pos.X + offset.X), (float)(root.Pos.Y + offset.Y), (float)(root.Pos.Z + offset.Z));
+            Quaternion rootRot = Quaternion.AngleAxis((float)root.Yaw, Vector3.up);
+            Vector3 local = host.transform.InverseTransformPoint(rootWorld);
+            Quaternion localRot = Quaternion.Inverse(host.transform.rotation) * rootRot;
+            rootNode.SetValue("attPos0", KSPUtil.WriteVector(local));
+            rootNode.SetValue("attRot0", KSPUtil.WriteQuaternion(localRot));
+            rootNode.AddValue("attN", (root.Shape.TopNode ?? "top") + "," + hostKey);
+            hostPart.AddValue("link", root.Key);
+            hostPart.AddValue("attN", hostNode.id + "," + root.Key);
+            foreach (ConfigNode n in launcherParts) shipNode.AddNode(n);
+            result = shipNode;
+            return null;
+        }
+
+        /// <summary>Copie du vaisseau avant l'ajout du lanceur, pour revenir en arrière (GameData/LaunchPlanner/avant-lanceur.craft).</summary>
+        static void Backup(ConfigNode shipNode)
+        {
+            try
+            {
+                string dir = Path.Combine(KSPUtil.ApplicationRootPath, "GameData/LaunchPlanner");
+                Directory.CreateDirectory(dir);
+                BackupPath = Path.Combine(dir, "avant-lanceur.craft");
+                shipNode.Save(BackupPath);
+            }
+            catch (Exception e)
+            {
+                Debug.LogException(e);
+            }
         }
 
         static string GameVersion()
@@ -85,15 +183,15 @@ namespace LaunchPlanner
             }
         }
 
-        /// <summary>Copie du dernier lanceur généré, utile pour comprendre un problème (GameData/LaunchPlanner/dernier-lanceur.craft).</summary>
-        static bool SaveCopy(string text)
+        /// <summary>Vaisseau complet chargé dans l'éditeur, gardé pour comprendre un problème (GameData/LaunchPlanner/dernier-lanceur.craft).</summary>
+        static bool Save(ConfigNode ship)
         {
             try
             {
                 string dir = Path.Combine(KSPUtil.ApplicationRootPath, "GameData/LaunchPlanner");
                 Directory.CreateDirectory(dir);
                 LastCraftPath = Path.Combine(dir, "dernier-lanceur.craft");
-                File.WriteAllText(LastCraftPath, text);
+                ship.Save(LastCraftPath);
                 return true;
             }
             catch (Exception e)

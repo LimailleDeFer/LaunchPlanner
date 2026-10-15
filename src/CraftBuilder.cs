@@ -61,6 +61,8 @@ namespace LaunchPlanner
         public int Activation = -1;         // rang d'activation (0 = premier appui sur espace), -1 si la pièce n'a pas d'icône
         public int Separation = -1;         // rang d'activation du découpleur qui largue cette pièce
         public bool Crossfeed;              // découpleur radial des asperges : laisse passer le carburant
+        public CraftPart FuelTarget;        // conduite de carburant : pièce alimentée
+        public Vec3 TargetPoint;            // conduite de carburant : point d'arrivée sur la pièce alimentée
 
         public string Key { get { return Info.Name + "_" + Id; } }
     }
@@ -77,6 +79,9 @@ namespace LaunchPlanner
         public readonly List<string> Notes = new List<string>();
         uint nextId = 100001;
         int actions;
+
+        /// <summary>Conduite de carburant débloquée (FTX-2) pour les asperges ; null pour passer par les découpleurs.</summary>
+        public PartInfo FuelLine;
 
         public CraftBuilder(IPartShapes shapes)
         {
@@ -298,7 +303,7 @@ namespace LaunchPlanner
                     // Asperges : la paire i et i + n/2 (opposées) est larguée en premier pour i = 0.
                     int pair = b.Crossfeed ? i % (b.Count / 2) : 0;
                     dec.Activation = 1 + pair;
-                    dec.Crossfeed = b.Crossfeed;
+                    dec.Crossfeed = b.Crossfeed && FuelLine == null;
                     mine.Add(dec);
                     mount = dec;
                     point = point + outward * decThickness;
@@ -325,8 +330,41 @@ namespace LaunchPlanner
                         if (!b.Crossfeed || i % groups == g) set.Add(perBooster[i][j]);
                     SetSymmetry(set);
                 }
-            if (b.Crossfeed)
-                Notes.Add("Asperges : le transfert de carburant est activé sur les découpleurs radiaux ; les paires extérieures se vident en premier.");
+            if (b.Crossfeed && FuelLine != null) AddFuelLines(perBooster, b, groups, host);
+            else if (b.Crossfeed)
+                Notes.Add("Aucune conduite de carburant débloquée : le transfert passe par les découpleurs radiaux, les paires extérieures se vident en premier.");
+        }
+
+        /// <summary>
+        /// Asperges : chaque booster d'une paire alimente son voisin de la paire suivante, la dernière paire alimente le corps central.
+        /// Les conduites partent du réservoir du haut de chaque booster, à mi-hauteur.
+        /// </summary>
+        void AddFuelLines(List<List<CraftPart>> perBooster, BoosterPlan b, int groups, CraftPart core)
+        {
+            int first = b.Decoupler != null ? 1 : 0;
+            for (int g = 0; g < groups; g++)
+            {
+                List<CraftPart> lines = new List<CraftPart>();
+                for (int i = 0; i < b.Count; i++)
+                {
+                    if (i % groups != g) continue;
+                    CraftPart source = perBooster[i][first];
+                    CraftPart target = g + 1 < groups ? perBooster[(i + 1) % b.Count][first] : core;
+                    double y = (Top(source) + Bottom(source)) / 2;
+                    Vec3 from = new Vec3(source.Pos.X, y, source.Pos.Z), to = new Vec3(target.Pos.X, y, target.Pos.Z);
+                    Vec3 d = to - from;
+                    double len = Math.Sqrt(d.X * d.X + d.Z * d.Z);
+                    if (len < 1e-6) continue;
+                    d = d * (1 / len);
+                    Vec3 start = from + d * (source.Shape.Diameter / 2);
+                    CraftPart line = SurfaceAt(source, FuelLine, start, d);
+                    line.FuelTarget = target;
+                    line.TargetPoint = to - d * (target.Shape.Diameter / 2);
+                    lines.Add(line);
+                }
+                SetSymmetry(lines);
+            }
+            Notes.Add("Asperges : des conduites de carburant relient chaque paire de boosters à la suivante, puis au corps central.");
         }
 
         static void SetSymmetry(List<CraftPart> group)

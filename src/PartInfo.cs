@@ -23,6 +23,7 @@ namespace LaunchPlanner
         public string Tech;
         public string Category = "";  // catégorie de l'éditeur (Coupling pour les découpleurs)
         public double HeightM;        // distance entre les nœuds d'empilement du haut et du bas (0 si inconnue)
+        public double DiameterM;      // largeur réelle du modèle 3D (0 si inconnue)
         public bool Unlocked;
         public PartKind Kind;
         public double Cost;

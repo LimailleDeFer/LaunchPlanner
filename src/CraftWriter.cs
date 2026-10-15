@@ -60,7 +60,12 @@ namespace LaunchPlanner
             return "0," + F(Math.Sin(a)) + ",0," + F(Math.Cos(a));
         }
 
-        public static CraftNode Write(CraftBuilder builder, List<CraftPart> parts, string shipName, string version)
+        /// <summary>
+        /// `offset` déplace tout le lanceur (pour le placer sous une charge utile) et `stageOffset` décale ses étages
+        /// au-dessus de ceux de la charge utile.
+        /// </summary>
+        public static CraftNode Write(CraftBuilder builder, List<CraftPart> parts, string shipName, string version,
+            Vec3 offset = default(Vec3), int stageOffset = 0)
         {
             Random random = new Random();
             CraftNode ship = new CraftNode("ship");
@@ -72,6 +77,9 @@ namespace LaunchPlanner
                 .Add("persistentId", ((uint)random.Next(1, int.MaxValue)).ToString(Inv))
                 .Add("rot", "0,0,0,1");
 
+            Dictionary<CraftPart, uint> persistent = new Dictionary<CraftPart, uint>();
+            foreach (CraftPart p in parts) persistent[p] = (uint)random.Next(1, int.MaxValue);
+
             foreach (CraftPart p in parts)
             {
                 CraftNode n = ship.AddNode("PART");
@@ -79,10 +87,12 @@ namespace LaunchPlanner
                 double localYaw = p.Parent == null ? p.Yaw : p.Yaw - p.Parent.Yaw;
                 int stage = builder.InverseStage(p.Activation);
                 int sep = builder.InverseStage(p.Separation);
+                if (stage >= 0) stage += stageOffset;
+                if (sep >= 0) sep += stageOffset;
                 n.Add("part", p.Key)
-                    .Add("partName", "Part")
-                    .Add("persistentId", ((uint)random.Next(1, int.MaxValue)).ToString(Inv))
-                    .Add("pos", V(p.Pos))
+                    .Add("partName", p.FuelTarget != null ? "CompoundPart" : "Part")
+                    .Add("persistentId", persistent[p].ToString(Inv))
+                    .Add("pos", V(p.Pos + offset))
                     .Add("attPos", "0,0,0")
                     .Add("attPos0", V(local))
                     .Add("rot", Q(p.Yaw))
@@ -92,12 +102,12 @@ namespace LaunchPlanner
                     .Add("symMethod", "Radial")
                     .Add("autostrutMode", "Off")
                     .Add("rigidAttachment", "False")
-                    .Add("istg", (stage >= 0 ? stage : Math.Max(0, sep)).ToString(Inv))
+                    .Add("istg", (stage >= 0 ? stage : Math.Max(stageOffset, sep)).ToString(Inv))
                     .Add("resPri", "0")
-                    .Add("dstg", (stage >= 0 ? stage : Math.Max(0, sep)).ToString(Inv))
+                    .Add("dstg", (stage >= 0 ? stage : Math.Max(stageOffset, sep)).ToString(Inv))
                     .Add("sidx", stage >= 0 ? StageIndex(parts, p).ToString(Inv) : "-1")
                     .Add("sqor", stage >= 0 ? stage.ToString(Inv) : "-1")
-                    .Add("sepI", Math.Max(0, sep).ToString(Inv))
+                    .Add("sepI", Math.Max(stageOffset, sep).ToString(Inv))
                     .Add("attm", p.Attach == AttachKind.Surface ? "1" : "0")
                     .Add("sameVesselCollision", "False")
                     .Add("modCost", "0")
@@ -109,6 +119,18 @@ namespace LaunchPlanner
                 foreach (CraftPart c in p.Children)
                     if (c.Attach == AttachKind.Stack) n.Add("attN", c.ParentNode + "," + c.Key);
                 if (p.Attach == AttachKind.Surface) n.Add("srfN", "srfAttach," + p.Parent.Key);
+                if (p.FuelTarget != null)
+                {
+                    // Conduite de carburant : pièce composée, l'extrémité est donnée dans le repère de la conduite.
+                    Vec3 end = (p.TargetPoint - p.Pos).Yaw(-p.Yaw);
+                    double len = Math.Sqrt(end.X * end.X + end.Y * end.Y + end.Z * end.Z);
+                    Vec3 dir = len > 0 ? end * (1 / len) : new Vec3(0, 0, 1);
+                    n.AddNode("PARTDATA").Add("tgt", p.FuelTarget.Id.ToString(Inv))
+                        .Add("tpersID", persistent[p.FuelTarget].ToString(Inv))
+                        .Add("pos", V(end))
+                        .Add("rot", Q(180))
+                        .Add("dir", V(dir));
+                }
 
                 for (int i = 0; i < p.Shape.Modules.Count; i++)
                 {

@@ -123,7 +123,7 @@ namespace LaunchPlanner
     public class LauncherDesigner
     {
         const double G0 = PartInfo.G0;
-        const int MaxEnginesPerStage = 4;    // étages supérieurs
+        const int MaxEnginesPerStage = 2;    // étages supérieurs : un moteur à vide (deux au plus, comme Centaur)
         const int MaxLowerEngines = 7;       // premier étage (grappe de moteurs)
         const double MaxTankRatio = 0.2;     // masse à vide / masse d'ergols (≈ 0,125 pour les réservoirs du jeu de base)
         const double TankRatioSlack = 1.5;  // tolérance par rapport au meilleur réservoir lors du choix des pièces
@@ -225,6 +225,8 @@ namespace LaunchPlanner
                     if (Propellant(p) <= 0 || p.DryMassT / Propellant(p) > MaxTankRatio * 1.3) continue;
                     // Coiffes et pièces à un seul nœud d'empilement : rien ne peut se fixer dessous.
                     if (IsNoseCone(p) || (heightsKnown && p.HeightM <= 0)) continue;
+                    // Modèle nettement plus étroit que son profil : il casserait l'allure du lanceur (étage large sur étage fin).
+                    if (p.DiameterM > 0 && p.DiameterM < 0.8 * CraftBuilder.DiameterOf(SizeOf(p))) continue;
                     // Les adaptateurs (plusieurs diamètres) ne s'empilent pas en série : ils servent seulement à raccorder deux étages.
                     bool adapter = StackSizes(p) == 2;
                     if (!adapter && (StackSizes(p) != 1 || p.DryMassT / Propellant(p) > MaxTankRatio)) continue;
@@ -570,9 +572,26 @@ namespace LaunchPlanner
             foreach (StagePlan s in d.Stages)
                 if (s.Boosters != null && s.Boosters.Count > 0 && s.CoreTwr < MinTwr(s.CoreStartDeltaV) * twrMargin)
                     return string.Format("TWR du corps central trop faible après le largage des boosters ({0:0.00})", s.CoreTwr);
+            // Montage possible : la grappe tient sous le plus large réservoir débloqué, les boosters tiennent autour du corps.
+            foreach (StagePlan s in d.Stages)
+            {
+                if (s.EngineCount > 1 && !ClusterFits(s.Mixture, s.Engine, s.EngineCount))
+                    return string.Format("{0} moteurs ne tiennent pas sous le plus large réservoir débloqué", s.EngineCount);
+                BoosterPlan b = s.Boosters;
+                if (b != null && b.Count > 0)
+                {
+                    double core = CraftBuilder.DiameterOf(LargestSize(s.Mixture, s.Size));
+                    double each = CraftBuilder.DiameterOf(SizeOf(b.Part));
+                    if (b.Count * each > Math.PI * (core + each) * 0.95)
+                        return string.Format("{0} boosters ne tiennent pas autour du corps central", b.Count);
+                }
+            }
             // Un premier étage qui ne fournit presque rien n'est qu'un SSTO déguisé.
             if (d.Stages.Count > 1 && d.Stages[0].DeltaV < MinFirstStageShare * req.TargetDeltaV)
                 return "premier étage trop petit";
+            // Un étage supérieur qui n'apporte presque rien ne vaut pas son découpleur (sur les vrais lanceurs, 30 à 50 %).
+            for (int i = 1; i < d.Stages.Count; i++)
+                if (d.Stages[i].DeltaV < 0.15 * req.TargetDeltaV) return "étage supérieur trop petit";
             return null;
         }
 
@@ -590,10 +609,18 @@ namespace LaunchPlanner
             return high + (req.MinUpperTwr - high) * x;
         }
 
+        /// <summary>
+        /// Masse (ou coût) à minimiser. Chaque moteur en plus d'un par étage coûte 2 % : une grappe ne l'emporte sur un seul
+        /// gros moteur que si elle est nettement plus efficace.
+        /// </summary>
         double Score(LauncherDesign d)
         {
-            return req.MinimizeCost ? d.Cost : d.TotalMass;
+            int extra = 0;
+            foreach (StagePlan s in d.Stages) extra += Math.Max(0, s.EngineCount - 1);
+            return (req.MinimizeCost ? d.Cost : d.TotalMass) * (1 + ClusterPenalty * extra);
         }
+
+        const double ClusterPenalty = 0.02;
 
         // ---------- Construction des étages ----------
 
@@ -614,6 +641,22 @@ namespace LaunchPlanner
                 s.DecouplerMass = s.Decoupler != null ? s.Decoupler.DryMassT : 0.05;
             }
             return s;
+        }
+
+        bool ClusterFits(string mixture, PartInfo engine, int count)
+        {
+            return ClusterCapacity(CraftBuilder.DiameterOf(LargestSize(mixture, SizeOf(engine))), CraftBuilder.DiameterOf(SizeOf(engine))) >= count;
+        }
+
+        string LargestSize(string mixture, string fallback)
+        {
+            Mixture mix;
+            if (!mixtures.TryGetValue(mixture, out mix) || mix.Sizes.Count == 0) return fallback;
+            string largest = mix.Sizes[mix.Sizes.Count - 1];
+            if (req.MaxWidth > 0)
+                for (int i = mix.Sizes.Count - 1; i >= 0; i--)
+                    if (CraftBuilder.DiameterOf(mix.Sizes[i]) <= req.MaxWidth) return mix.Sizes[i];
+            return largest;
         }
 
         /// <summary>Plus petit diamètre de réservoir sous lequel tient la grappe de moteurs.</summary>
@@ -874,7 +917,7 @@ namespace LaunchPlanner
                 if (boosterKind == "solid")
                 {
                     foreach (PartInfo srb in solidBoosters)
-                        for (int c = 2; c <= 8; c += 2)
+                        for (int c = 2; c <= 4; c += 2)   // comme Ariane 5, Atlas V, H-IIA : 2 ou 4 boosters
                             best = Better(best, Build(u, e, n, new BoosterPlan
                             {
                                 Count = c, Solid = true, Part = srb, Decoupler = radial,

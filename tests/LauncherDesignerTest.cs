@@ -38,6 +38,7 @@ static class LauncherDesignerTest
                 IspVac = D(c[col["isp_vide_s"]]), IspAsl = D(c[col["isp_sol_s"]]), Propellants = c[col["ergols"]],
             };
             if (col.ContainsKey("categorie")) p.Category = c[col["categorie"]];
+            if (col.ContainsKey("diametre_m") && c[col["diametre_m"]].Length > 0) p.DiameterM = double.Parse(c[col["diametre_m"]], CultureInfo.InvariantCulture);
             if (col.ContainsKey("hauteur_m") && c[col["hauteur_m"]].Length > 0) p.HeightM = double.Parse(c[col["hauteur_m"]], CultureInfo.InvariantCulture);
             foreach (string r in c[col["ressources"]].Split(' '))
             {
@@ -107,7 +108,7 @@ static class LauncherDesignerTest
             foreach (LauncherDesign d in designs)
             {
                 if (!d.Valid) continue;
-                CraftBuilder builder = new CraftBuilder(new FakeShapes());
+                CraftBuilder builder = new CraftBuilder(new FakeShapes()) { FuelLine = new PartInfo { Name = "fuelLine", Title = "FTX-2", Kind = PartKind.Tank } };
                 List<CraftPart> craft = builder.Build(d);
                 bad += CheckCraft(craft);
                 string path = System.IO.Path.Combine(craftDir, d.Variant.Replace(' ', '-') + ".craft");

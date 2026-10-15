@@ -67,12 +67,12 @@ namespace LaunchPlanner
         }
 
         // En sandbox il n'y a pas d'arbre technologique : tout est disponible.
-        static bool SafeHasResearch()
+        public static bool SafeHasResearch()
         {
             return Refl.GetStatic(typeof(ResearchAndDevelopment), "Instance") != null;
         }
 
-        static bool SafePurchased(AvailablePart ap)
+        public static bool SafePurchased(AvailablePart ap)
         {
             try { return ResearchAndDevelopment.PartModelPurchased(ap); }
             catch { return true; }
@@ -130,6 +130,7 @@ namespace LaunchPlanner
                         Tech = baseInfo.Tech,
                         Category = baseInfo.Category,
                         HeightM = baseInfo.HeightM,
+                        DiameterM = baseInfo.DiameterM,
                         Cost = baseInfo.Cost,
                         Kind = PartKind.Tank,
                         DryMassT = baseInfo.DryMassT + ToDouble(Refl.Call(module, "GetDryMass", subtype)),
@@ -163,6 +164,34 @@ namespace LaunchPlanner
             return n >= 2 ? top - bottom : 0;
         }
 
+        /// <summary>Largeur du modèle 3D (le profil annoncé par certains mods ne correspond pas à la taille réelle).</summary>
+        static double ModelWidth(Part prefab)
+        {
+            try
+            {
+                Matrix4x4 toPart = prefab.transform.worldToLocalMatrix;
+                float minX = float.MaxValue, maxX = float.MinValue, minZ = float.MaxValue, maxZ = float.MinValue;
+                foreach (MeshFilter mf in prefab.GetComponentsInChildren<MeshFilter>(true))
+                {
+                    if (mf.sharedMesh == null) continue;
+                    Bounds b = mf.sharedMesh.bounds;
+                    Matrix4x4 m = toPart * mf.transform.localToWorldMatrix;
+                    for (int i = 0; i < 8; i++)
+                    {
+                        Vector3 c = b.center + Vector3.Scale(b.extents, new Vector3((i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1));
+                        Vector3 v = m.MultiplyPoint3x4(c);
+                        minX = Math.Min(minX, v.x); maxX = Math.Max(maxX, v.x);
+                        minZ = Math.Min(minZ, v.z); maxZ = Math.Max(maxZ, v.z);
+                    }
+                }
+                return maxX > minX ? Math.Min(maxX - minX, maxZ - minZ) : 0;
+            }
+            catch (Exception)
+            {
+                return 0;
+            }
+        }
+
         static double ToDouble(object value)
         {
             if (value == null) return 0;
@@ -184,6 +213,7 @@ namespace LaunchPlanner
                 Cost = Refl.Num(ap, "cost"),
                 DryMassT = Refl.Num(prefab, "mass"),
                 HeightM = StackHeight(prefab),
+                DiameterM = ModelWidth(prefab),
             };
 
             ReadResources(ap, prefab, info);
@@ -302,7 +332,7 @@ namespace LaunchPlanner
             string path = Path.Combine(directory, "inventaire.csv");
             CultureInfo ci = CultureInfo.InvariantCulture;
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine("type;nom;variante;titre;source;tailles;tech;debloquee;cout;masse_seche_t;masse_pleine_t;poussee_vide_kN;poussee_sol_kN;isp_vide_s;isp_sol_s;ergols;ressources;categorie;hauteur_m");
+            sb.AppendLine("type;nom;variante;titre;source;tailles;tech;debloquee;cout;masse_seche_t;masse_pleine_t;poussee_vide_kN;poussee_sol_kN;isp_vide_s;isp_sol_s;ergols;ressources;categorie;hauteur_m;diametre_m");
             foreach (PartInfo p in Parts)
             {
                 List<string> res = new List<string>();
@@ -313,7 +343,7 @@ namespace LaunchPlanner
                     p.Cost.ToString("0", ci), p.DryMassT.ToString("0.###", ci), p.WetMassT.ToString("0.###", ci),
                     p.ThrustVacKN.ToString("0.#", ci), p.ThrustAslKN.ToString("0.#", ci),
                     p.IspVac.ToString("0", ci), p.IspAsl.ToString("0", ci), p.Propellants, string.Join(" ", res.ToArray()), p.Category,
-                    p.HeightM.ToString("0.###", ci),
+                    p.HeightM.ToString("0.###", ci), p.DiameterM.ToString("0.###", ci),
                 }));
             }
             File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
