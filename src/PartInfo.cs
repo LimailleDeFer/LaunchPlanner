@@ -22,6 +22,7 @@ namespace LaunchPlanner
         public string Sizes;       // profils de fixation, ex. "size1, srf"
         public string Tech;
         public string Category = "";  // catégorie de l'éditeur (Coupling pour les découpleurs)
+        public double HeightM;        // distance entre les nœuds d'empilement du haut et du bas (0 si inconnue)
         public bool Unlocked;
         public PartKind Kind;
         public double Cost;

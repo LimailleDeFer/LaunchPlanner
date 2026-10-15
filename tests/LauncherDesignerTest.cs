@@ -38,6 +38,7 @@ static class LauncherDesignerTest
                 IspVac = D(c[col["isp_vide_s"]]), IspAsl = D(c[col["isp_sol_s"]]), Propellants = c[col["ergols"]],
             };
             if (col.ContainsKey("categorie")) p.Category = c[col["categorie"]];
+            if (col.ContainsKey("hauteur_m") && c[col["hauteur_m"]].Length > 0) p.HeightM = double.Parse(c[col["hauteur_m"]], CultureInfo.InvariantCulture);
             foreach (string r in c[col["ressources"]].Split(' '))
             {
                 int eq = r.IndexOf('=');
@@ -69,6 +70,13 @@ static class LauncherDesignerTest
             PayloadMass = args.Length > 1 ? D(args[1]) : 5,
             TargetDeltaV = args.Length > 2 ? D(args[2]) : 4500,
         };
+        // LIMITS=hauteur,largeur,pièces,masse (0 = sans limite), comme le VAB et le pas de tir en carrière
+        string limits = Environment.GetEnvironmentVariable("LIMITS");
+        if (!string.IsNullOrEmpty(limits))
+        {
+            string[] l = limits.Split(',');
+            req.MaxHeight = D(l[0]); req.MaxWidth = D(l[1]); req.MaxParts = (int)D(l[2]); req.MaxMass = D(l[3]);
+        }
         Stopwatch sw = Stopwatch.StartNew();
         LauncherDesigner.Log = m => Console.Error.WriteLine(sw.ElapsedMilliseconds + " ms " + m);
         LauncherDesigner designer = new LauncherDesigner(req);
@@ -82,10 +90,11 @@ static class LauncherDesignerTest
             Console.WriteLine("== " + d.Variant + (d.Valid ? "" : " — " + d.Problem));
             if (d.Stages.Count == 0) continue;
             Console.WriteLine("   masse {0:0.0} t, coût {1:0}, Δv {2:0} m/s, TWR décollage {3:0.00}", d.TotalMass, d.Cost, d.DeltaV, d.LiftoffTwr);
+            Console.WriteLine("   hauteur {0:0.0} m, largeur {1:0.0} m, {2} pièces", d.HeightM, d.WidthM, d.PartCount);
             for (int i = d.Stages.Count - 1; i >= 0; i--)
             {
                 StagePlan s = d.Stages[i];
-                Console.WriteLine("   Étage {0} : {1} × {2} ; {3} ; Δv {4:0}, TWR {5:0.00}", i + 1, s.EngineCount, s.Engine.Title, Tanks(s.Tanks), s.DeltaV, s.Twr);
+                Console.WriteLine("   Étage {0} (Ø {6}) : {1} × {2} ; {3} ; Δv {4:0}, TWR {5:0.00}", i + 1, s.EngineCount, s.Engine.Title, Tanks(s.Tanks), s.DeltaV, s.Twr, LauncherDesigner.Diameter(s.Size));
                 if (s.Boosters != null)
                     Console.WriteLine("      + {0} × {1}{2}", s.Boosters.Count, s.Boosters.Part.Title, s.Boosters.Solid ? "" : " avec " + Tanks(s.Boosters.Tanks));
             }

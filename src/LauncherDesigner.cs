@@ -86,6 +86,11 @@ namespace LaunchPlanner
         public double LiftoffTwr;
         public List<string> Notes = new List<string>();
         public PartInfo PayloadDecoupler;   // découpleur entre la charge utile et le dernier étage
+
+        // Encombrement estimé, charge utile comprise
+        public double HeightM;
+        public double WidthM;
+        public int PartCount;
     }
 
     public class DesignRequest
@@ -99,6 +104,15 @@ namespace LaunchPlanner
         public double MinUpperTwr = 0.5;
         public double AscentDeltaV = 3400; // Δv de la mise en orbite depuis le sol : les étages allumés avant ont besoin de poussée
         public bool MinimizeCost;
+
+        // Limites du VAB et du pas de tir (0 = pas de limite, par exemple en mode bac à sable)
+        public double MaxHeight;        // m
+        public double MaxWidth;         // m
+        public int MaxParts;
+        public double MaxMass;          // t, au décollage
+        public double PayloadHeight;    // m
+        public double PayloadWidth;     // m
+        public int PayloadParts;
     }
 
     /// <summary>
@@ -118,7 +132,11 @@ namespace LaunchPlanner
         {
             public string Key;
             public List<PartInfo> Tanks = new List<PartInfo>();
+            public List<PartInfo> Adapters = new List<PartInfo>();   // réservoirs à deux diamètres (haut d'un étage plus large)
+            public List<string> Sizes = new List<string>();          // diamètres disponibles, du plus petit au plus grand
         }
+
+        const int MaxTankParts = 6;   // au-delà, on passe au diamètre supérieur : base large, étages qui s'affinent
 
         readonly DesignRequest req;
         readonly Dictionary<string, Mixture> mixtures = new Dictionary<string, Mixture>();
@@ -128,9 +146,18 @@ namespace LaunchPlanner
         readonly List<PartInfo> decouplers = new List<PartInfo>();
         readonly Dictionary<PartInfo, string> engineMixture = new Dictionary<PartInfo, string>();
 
+        bool heightsKnown;   // l'inventaire vient du jeu : la hauteur d'empilement de chaque pièce est connue
+
+        static bool IsNoseCone(PartInfo p)
+        {
+            string n = p.Name.ToLowerInvariant();
+            return n.Contains("nose") || n.Contains("cone");
+        }
+
         public LauncherDesigner(DesignRequest request)
         {
             req = request;
+            heightsKnown = request.Parts.Exists(p => p.HeightM > 0);
             Index();
         }
 
@@ -195,9 +222,12 @@ namespace LaunchPlanner
                 {
                     // Seulement de vrais réservoirs : on écarte les pièces dont le carburant n'est qu'un complément
                     // (capsules, compartiments, jupes…), trop lourdes pour la quantité emportée.
-                    if (Propellant(p) <= 0 || p.DryMassT / Propellant(p) > MaxTankRatio) continue;
-                    // Les adaptateurs (plusieurs diamètres) ne s'empilent pas en série : on ne garde que les réservoirs d'un seul diamètre.
-                    if (StackSizes(p) != 1) continue;
+                    if (Propellant(p) <= 0 || p.DryMassT / Propellant(p) > MaxTankRatio * 1.3) continue;
+                    // Coiffes et pièces à un seul nœud d'empilement : rien ne peut se fixer dessous.
+                    if (IsNoseCone(p) || (heightsKnown && p.HeightM <= 0)) continue;
+                    // Les adaptateurs (plusieurs diamètres) ne s'empilent pas en série : ils servent seulement à raccorder deux étages.
+                    bool adapter = StackSizes(p) == 2;
+                    if (!adapter && (StackSizes(p) != 1 || p.DryMassT / Propellant(p) > MaxTankRatio)) continue;
                     List<string> names = new List<string>();
                     foreach (ResourceAmount r in p.Resources)
                         if (Propellants.Contains(r.Name) && r.Amount > 0) names.Add(r.Name);
@@ -205,7 +235,9 @@ namespace LaunchPlanner
                     string key = MixtureKey(names);
                     Mixture mix;
                     if (!mixtures.TryGetValue(key, out mix)) mixtures[key] = mix = new Mixture { Key = key };
+                    if (adapter) { mix.Adapters.Add(p); continue; }
                     mix.Tanks.Add(p);
+                    if (!mix.Sizes.Contains(SizeOf(p))) mix.Sizes.Add(SizeOf(p));
                 }
                 else if (p.Kind == PartKind.Decoupler && IsRealDecoupler(p)) decouplers.Add(p);
                 // Un propulseur à poudre qui brûle moins de 15 s (tour de sauvetage, fusée de séparation) n'est pas un booster.
@@ -224,6 +256,8 @@ namespace LaunchPlanner
                 if (p.IspAsl > 50 && p.ThrustAslKN > 0) lowerEngines.Add(p);
             }
 
+            foreach (Mixture m in mixtures.Values)
+                m.Sizes.Sort((a, b) => CraftBuilder.DiameterOf(a).CompareTo(CraftBuilder.DiameterOf(b)));
             Prune(upperEngines, false);
             Prune(lowerEngines, true);
             PruneBoosters();
@@ -299,11 +333,39 @@ namespace LaunchPlanner
             return ratioCache[key] = ComputeTankRatio(mixture, size);
         }
 
+        // Réservoirs utilisables avec un moteur de cette taille : du même diamètre ou plus larges.
+        List<PartInfo> TanksAtLeast(string mixture, string size)
+        {
+            Mixture mix;
+            if (!mixtures.TryGetValue(mixture, out mix)) return new List<PartInfo>();
+            double d = CraftBuilder.DiameterOf(size);
+            List<PartInfo> list = mix.Tanks.FindAll(t => CraftBuilder.DiameterOf(SizeOf(t)) >= d - 0.01);
+            return list.Count > 0 ? list : mix.Tanks;
+        }
+
         double ComputeTankRatio(string mixture, string size)
         {
-            double best = double.MaxValue;
-            foreach (PartInfo t in TanksFor(mixture, size)) best = Math.Min(best, t.DryMassT / Propellant(t));
+            double best = BestRatio(TanksAtLeast(mixture, size));
             return best == double.MaxValue ? 0.125 : best;
+        }
+
+        /// <summary>
+        /// Meilleur rapport masse à vide / ergols parmi les réservoirs qui comptent : un petit réservoir exceptionnellement léger
+        /// (quelques centaines de kilos) ne doit pas faire croire que tout l'étage sera aussi léger.
+        /// </summary>
+        static double BestRatio(List<PartInfo> tanks)
+        {
+            Dictionary<string, double> largest = new Dictionary<string, double>();
+            foreach (PartInfo t in tanks)
+            {
+                string size = SizeOf(t);
+                double v;
+                if (!largest.TryGetValue(size, out v) || Propellant(t) > v) largest[size] = Propellant(t);
+            }
+            double best = double.MaxValue;
+            foreach (PartInfo t in tanks)
+                if (Propellant(t) >= 0.25 * largest[SizeOf(t)]) best = Math.Min(best, t.DryMassT / Propellant(t));
+            return best;
         }
 
         double TankCostPerTonne(string mixture, string size)
@@ -317,7 +379,7 @@ namespace LaunchPlanner
         double ComputeTankCost(string mixture, string size)
         {
             double best = double.MaxValue, ratio = double.MaxValue;
-            foreach (PartInfo t in TanksFor(mixture, size))
+            foreach (PartInfo t in TanksAtLeast(mixture, size))
             {
                 double r = t.DryMassT / Propellant(t);
                 if (r < ratio) { ratio = r; best = t.Cost / Propellant(t); }
@@ -542,9 +604,9 @@ namespace LaunchPlanner
                 Engine = engine,
                 EngineCount = count,
                 Mixture = engineMixture[engine],
-                Size = SizeOf(engine),
                 Fuel = fuel,
             };
+            s.Size = ClusterSize(s.Mixture, engine, count);
             s.TankDry = fuel * TankRatio(s.Mixture, s.Size);
             if (withDecoupler)
             {
@@ -552,6 +614,18 @@ namespace LaunchPlanner
                 s.DecouplerMass = s.Decoupler != null ? s.Decoupler.DryMassT : 0.05;
             }
             return s;
+        }
+
+        /// <summary>Plus petit diamètre de réservoir sous lequel tient la grappe de moteurs.</summary>
+        string ClusterSize(string mixture, PartInfo engine, int count)
+        {
+            string size = SizeOf(engine);
+            Mixture mix;
+            if (count <= 1 || !mixtures.TryGetValue(mixture, out mix) || mix.Sizes.Count == 0) return size;
+            double engineD = CraftBuilder.DiameterOf(size);
+            foreach (string s in mix.Sizes)
+                if (ClusterCapacity(CraftBuilder.DiameterOf(s), engineD) >= count) return s;
+            return mix.Sizes[mix.Sizes.Count - 1];
         }
 
         void SetFuel(StagePlan s, double fuel)
@@ -863,22 +937,36 @@ namespace LaunchPlanner
 
         LauncherDesign Quantized(LauncherDesign d, string variant, string description)
         {
-            d.PayloadDecoupler = StackDecoupler(d.Stages[d.Stages.Count - 1].Size);
             d.Variant = variant;
             d.Description = description;
 
-            for (int i = d.Stages.Count - 1; i >= 1; i--) Quantize(d.Stages[i]);
             StagePlan first = d.Stages[0];
-            SolveFirstStage(d);
-            double wanted = first.Fuel;
-            for (int attempt = 0; attempt < 12; attempt++)
+            double[] fuels = new double[d.Stages.Count];
+            for (int i = 0; i < fuels.Length; i++) fuels[i] = d.Stages[i].Fuel;
+            // Trop haut pour le VAB : on reprend avec des réservoirs plus larges, donc moins hauts.
+            for (widen = 0; widen <= MaxWiden; widen++)
             {
-                SetFuel(first, wanted);
-                Quantize(first);
-                double dv = Simulate(d);
-                if (dv >= req.TargetDeltaV) break;
-                wanted = Math.Max(wanted * 1.03, first.Fuel * (1 + (req.TargetDeltaV - dv) / req.TargetDeltaV));
+                // Du haut vers le bas : chaque étage est au moins aussi large que celui qu'il porte.
+                for (int i = d.Stages.Count - 1; i >= 1; i--)
+                {
+                    d.Stages[i].Fuel = fuels[i];
+                    Quantize(d, i);
+                }
+                d.PayloadDecoupler = StackDecoupler(d.Stages[d.Stages.Count - 1].Size);
+                SolveFirstStage(d);
+                double wanted = first.Fuel;
+                for (int attempt = 0; attempt < 12; attempt++)
+                {
+                    SetFuel(first, wanted);
+                    Quantize(d, 0);
+                    double dv = Simulate(d);
+                    if (dv >= req.TargetDeltaV) break;
+                    wanted = Math.Max(wanted * 1.03, first.Fuel * (1 + (req.TargetDeltaV - dv) / req.TargetDeltaV));
+                }
+                Measure(d);
+                if (req.MaxHeight <= 0 || d.HeightM <= req.MaxHeight) break;
             }
+            widen = 0;
 
             d.Problem = "";
             if (Simulate(d) < 0) { d.Valid = false; return d; }
@@ -886,14 +974,21 @@ namespace LaunchPlanner
             string problem = ConstraintProblem(d);
             twrMargin = 1.04;
             if (d.DeltaV < req.TargetDeltaV - 1) problem = string.Format("Δv insuffisant une fois les réservoirs arrondis ({0:0} m/s)", d.DeltaV);
+            if (problem == null) problem = SiteProblem(d);
             d.Valid = problem == null;
             if (!d.Valid) d.Problem = problem;
-            foreach (StagePlan s in d.Stages)
+            for (int i = 0; i < d.Stages.Count; i++)
             {
-                if (s.Tanks.Count > 0 && !HasSize(s.Tanks[0].Tank, s.Size))
-                    d.Notes.Add("Pas de réservoir " + s.Size + " pour " + s.Engine.Title + " : un adaptateur sera nécessaire.");
+                StagePlan s = d.Stages[i];
                 if (s.Decoupler == null && s != first)
                     d.Notes.Add("Aucun découpleur débloqué à la bonne taille.");
+                if (s.EngineCount > 1 && ClusterCapacity(CraftBuilder.DiameterOf(s.Size), CraftBuilder.DiameterOf(SizeOf(s.Engine))) < s.EngineCount)
+                    d.Notes.Add(string.Format("Étage {0} : {1} moteurs se chevauchent sous un réservoir de {2} (pas de réservoir débloqué plus large).",
+                        i + 1, s.EngineCount, Diameter(s.Size)));
+                if (i + 1 < d.Stages.Count && s.Size != d.Stages[i + 1].Size &&
+                    (s.Tanks.Count == 0 || StackSizes(s.Tanks[0].Tank) != 2))
+                    d.Notes.Add(string.Format("Aucun réservoir adaptateur {0} → {1} débloqué : ajoute un adaptateur structurel entre les étages {2} et {3}.",
+                        Diameter(s.Size), Diameter(d.Stages[i + 1].Size), i + 1, i + 2));
             }
             return d;
         }
@@ -905,12 +1000,189 @@ namespace LaunchPlanner
             return "Aucune combinaison de pièces débloquées n'atteint le Δv demandé avec un TWR suffisant.";
         }
 
-        void Quantize(StagePlan s)
+        public static string Diameter(string size)
         {
-            s.Tanks = Fill(s.Fuel, s.Mixture, s.Size, out s.Fuel, out s.TankDry);
+            return CraftBuilder.DiameterOf(size).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture).Replace('.', ',') + " m";
+        }
+
+        /// <summary>Combien de moteurs de cette taille tiennent sous un réservoir de ce diamètre (grappe, coupleur multiple).</summary>
+        static int ClusterCapacity(double tankDiameter, double engineDiameter)
+        {
+            if (tankDiameter < engineDiameter - 0.01) return 0;
+            double k = tankDiameter / engineDiameter;
+            return Math.Max(1, (int)Math.Floor(k * k + 1e-9));
+        }
+
+        /// <summary>
+        /// Remplace les ergols de l'étage par de vrais réservoirs. Le diamètre est le plus petit qui accueille les moteurs,
+        /// reste au moins aussi large que l'étage du dessus et tient en peu de réservoirs ; si l'étage du dessus est plus étroit,
+        /// un réservoir adaptateur coiffe l'étage.
+        /// </summary>
+        void Quantize(LauncherDesign d, int index)
+        {
+            StagePlan s = d.Stages[index];
+            string above = index + 1 < d.Stages.Count ? d.Stages[index + 1].Size : null;
+            double minD = above != null ? CraftBuilder.DiameterOf(above) : 0;
+            s.Size = ChooseSize(s.Fuel, s.Mixture, s.Engine, s.EngineCount, minD, double.MaxValue);
+
+            double fuel = s.Fuel;
+            List<TankUse> tanks = new List<TankUse>();
+            double dry = 0, got = 0;
+            PartInfo adapter = above != null && above != s.Size ? Adapter(s.Mixture, s.Size, above) : null;
+            if (adapter != null && Propellant(adapter) < fuel)
+            {
+                AddTank(tanks, adapter);
+                dry += adapter.DryMassT;
+                got += Propellant(adapter);
+                fuel -= Propellant(adapter);
+            }
+            double f, td;
+            foreach (TankUse t in Fill(fuel, s.Mixture, s.Size, out f, out td)) tanks.Add(t);
+            s.Tanks = tanks;
+            s.Fuel = got + f;
+            s.TankDry = dry + td;
+            if (index > 0)
+            {
+                // Le découpleur sous un étage supérieur prend son diamètre.
+                s.Decoupler = StackDecoupler(s.Size) ?? s.Decoupler;
+                s.DecouplerMass = s.Decoupler != null ? s.Decoupler.DryMassT : 0.05;
+            }
+
             BoosterPlan b = s.Boosters;
             if (b != null && !b.Solid)
-                b.Tanks = Fill(b.Fuel, b.Mixture, SizeOf(b.Part), out b.Fuel, out b.TankDry);
+            {
+                string bs = ChooseSize(b.Fuel, b.Mixture, b.Part, 1, 0, CraftBuilder.DiameterOf(s.Size));
+                b.Tanks = Fill(b.Fuel, b.Mixture, bs, out b.Fuel, out b.TankDry);
+            }
+        }
+
+        string ChooseSize(double fuel, string mixture, PartInfo engine, int engines, double minDiameter, double maxDiameter)
+        {
+            Mixture mix;
+            string engineSize = SizeOf(engine);
+            if (!mixtures.TryGetValue(mixture, out mix) || mix.Sizes.Count == 0) return engineSize;
+            double engineD = CraftBuilder.DiameterOf(engineSize);
+            if (req.MaxWidth > 0) maxDiameter = Math.Min(maxDiameter, req.MaxWidth);
+            List<string> sizes = new List<string>();
+            foreach (string size in mix.Sizes)
+            {
+                double dia = CraftBuilder.DiameterOf(size);
+                if (dia < minDiameter - 0.01 || dia > maxDiameter + 0.01) continue;
+                if (ClusterCapacity(dia, engineD) < engines) continue;
+                sizes.Add(size);
+            }
+            // Rien ne convient (pas de réservoir assez large) : le plus large disponible.
+            if (sizes.Count == 0) return mix.Sizes[mix.Sizes.Count - 1];
+            // Parmi les diamètres qui tiennent en peu de réservoirs, celui qui ajoute le moins de masse inutile
+            // (masse à vide, ergols en trop une fois arrondis aux vrais réservoirs, et un peu par pièce).
+            int chosen = -1, fewest = int.MaxValue, fewestAt = 0;
+            double best = double.MaxValue;
+            for (int i = 0; i < sizes.Count; i++)
+            {
+                double got, dry;
+                int parts = TankParts(Fill(fuel, mixture, sizes[i], out got, out dry));
+                if (parts < fewest) { fewest = parts; fewestAt = i; }
+                if (parts > MaxTankParts) continue;
+                // Un étage plus large que nécessaire pèse peu, mais l'allure fusée veut des étages qui s'affinent vers le haut.
+                double score = FillScore(fuel, got, dry, parts) + 0.03 * fuel * i;
+                if (score < best - 1e-9) { best = score; chosen = i; }
+            }
+            if (chosen < 0) chosen = fewestAt;
+            return sizes[Math.Min(chosen + widen, sizes.Count - 1)];
+        }
+
+        // ---------- Encombrement (VAB et pas de tir) ----------
+
+        const int MaxWiden = 3;
+        int widen;   // crans de diamètre ajoutés quand le lanceur est trop haut
+
+        /// <summary>Hauteur d'empilement d'une pièce ; estimée d'après sa masse quand le jeu ne la donne pas.</summary>
+        static double HeightOf(PartInfo p)
+        {
+            if (p == null) return 0;
+            if (p.HeightM > 0) return p.HeightM;
+            double dia = CraftBuilder.DiameterOf(SizeOf(p));
+            if (p.Kind == PartKind.Decoupler) return 0.4;
+            if (p.Kind == PartKind.Engine) return 1.2 * dia;
+            double density = p.Kind == PartKind.Booster ? 1.6 : 1.0;   // t/m³ : ordre de grandeur des pièces du jeu
+            foreach (ResourceAmount r in p.Resources)
+                if (r.Name == "LqdHydrogen") density = 0.4;
+            return p.WetMassT / (Math.PI * dia * dia / 4 * density);
+        }
+
+        static double TanksHeight(List<TankUse> tanks)
+        {
+            double h = 0;
+            foreach (TankUse t in tanks) h += t.Count * HeightOf(t.Tank);
+            return h;
+        }
+
+        static int TankParts(List<TankUse> tanks)
+        {
+            int n = 0;
+            foreach (TankUse t in tanks) n += t.Count;
+            return n;
+        }
+
+        /// <summary>Hauteur, largeur et nombre de pièces du lanceur assemblé, charge utile comprise.</summary>
+        void Measure(LauncherDesign d)
+        {
+            double height = req.PayloadHeight + HeightOf(d.PayloadDecoupler);
+            double width = req.PayloadWidth;
+            int parts = req.PayloadParts + (d.PayloadDecoupler != null ? 1 : 0);
+            double boosterTop = 0;
+            for (int i = 0; i < d.Stages.Count; i++)
+            {
+                StagePlan s = d.Stages[i];
+                double stage = TanksHeight(s.Tanks) + HeightOf(s.Engine);
+                if (i > 0 && s.Decoupler != null) stage += HeightOf(s.Decoupler);
+                height += stage;
+                parts += TankParts(s.Tanks) + s.EngineCount + (i > 0 && s.Decoupler != null ? 1 : 0);
+                double dia = CraftBuilder.DiameterOf(s.Size);
+                width = Math.Max(width, dia);
+                BoosterPlan b = s.Boosters;
+                if (b != null && b.Count > 0)
+                {
+                    double bh = b.Solid ? HeightOf(b.Part) : TanksHeight(b.Tanks) + HeightOf(b.Part);
+                    string bs = b.Solid || b.Tanks.Count == 0 ? SizeOf(b.Part) : SizeOf(b.Tanks[0].Tank);
+                    boosterTop = Math.Max(boosterTop, bh);   // les boosters sont alignés sur le bas du premier étage
+                    width = Math.Max(width, dia + 2 * CraftBuilder.DiameterOf(bs) + 0.2);
+                    parts += b.Count * ((b.Solid ? 0 : TankParts(b.Tanks)) + 1 + (b.Decoupler != null ? 1 : 0));
+                }
+            }
+            d.HeightM = Math.Max(height, boosterTop);
+            d.WidthM = width;
+            d.PartCount = parts;
+        }
+
+        static string Metres(double m)
+        {
+            return m.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture).Replace('.', ',') + " m";
+        }
+
+        /// <summary>Ce qui empêche de construire ou de lancer ce lanceur avec les bâtiments actuels, ou null.</summary>
+        string SiteProblem(LauncherDesign d)
+        {
+            Measure(d);
+            if (req.MaxHeight > 0 && d.HeightM > req.MaxHeight)
+                return string.Format("trop haut : {0} pour {1} autorisés (améliore le pas de tir ou allège la charge utile)", Metres(d.HeightM), Metres(req.MaxHeight));
+            if (req.MaxWidth > 0 && d.WidthM > req.MaxWidth)
+                return string.Format("trop large : {0} pour {1} autorisés", Metres(d.WidthM), Metres(req.MaxWidth));
+            if (req.MaxParts > 0 && d.PartCount > req.MaxParts)
+                return string.Format("trop de pièces : {0} pour {1} autorisées par le VAB", d.PartCount, req.MaxParts);
+            if (req.MaxMass > 0 && d.TotalMass > req.MaxMass)
+                return string.Format("trop lourd pour le pas de tir : {0:0.#} t pour {1:0.#} t autorisées", d.TotalMass, req.MaxMass);
+            return null;
+        }
+
+        PartInfo Adapter(string mixture, string bottom, string top)
+        {
+            Mixture mix;
+            if (!mixtures.TryGetValue(mixture, out mix)) return null;
+            PartInfo best = null;
+            foreach (PartInfo a in mix.Adapters)
+                if (HasSize(a, bottom) && HasSize(a, top) && (best == null || Propellant(a) > Propellant(best))) best = a;
+            return best;
         }
 
         static void AddTank(List<TankUse> list, PartInfo tank)
@@ -920,12 +1192,19 @@ namespace LaunchPlanner
         }
 
         /// <summary>Choisit des réservoirs pour au moins `fuel` tonnes d'ergols : les plus gros d'abord, puis le plus petit qui suffit.</summary>
+        /// <summary>Masse « inutile » d'un remplissage : masse à vide, ergols en trop ou manquants, et un peu par pièce.</summary>
+        static double FillScore(double fuel, double got, double dry, int parts)
+        {
+            double extra = got - fuel;
+            return dry + (extra >= 0 ? 0.5 * extra : 3 * -extra) + 0.02 * fuel * parts;
+        }
+
         List<TankUse> Fill(double fuel, string mixture, string size, out double actualFuel, out double dry)
         {
             List<TankUse> used = new List<TankUse>();
             actualFuel = 0;
             dry = 0;
-            double bestRatio = TankRatio(mixture, size);
+            double bestRatio = BestRatio(TanksFor(mixture, size));
             List<PartInfo> tanks = TanksFor(mixture, size).FindAll(t => t.DryMassT / Propellant(t) <= bestRatio * TankRatioSlack);
             if (tanks.Count == 0 || fuel <= 0) return used;
             // À capacité égale, le réservoir le plus léger à vide.
@@ -935,22 +1214,44 @@ namespace LaunchPlanner
                 return c != 0 ? c : (a.DryMassT / Propellant(a)).CompareTo(b.DryMassT / Propellant(b));
             });
 
-            double remaining = fuel;
-            for (int guard = 0; guard < 200 && remaining > 1e-6; guard++)
+            // Un réservoir principal répété, plus au besoin un seul réservoir pour le reste :
+            // peu de pièces, un empilement régulier, le moins possible d'ergols en trop.
+            double bestScore = double.MaxValue;
+            PartInfo bestMain = null, bestRest = null;
+            int bestCount = 0;
+            foreach (PartInfo main in tanks)
             {
-                PartInfo pick = null;
-                foreach (PartInfo t in tanks) if (Propellant(t) <= remaining + 1e-9) { pick = t; break; }
-                if (pick == null)
+                double p = Propellant(main);
+                int whole = (int)Math.Floor(fuel / p + 1e-9);
+                if (whole > 200) continue;
+                for (int n = Math.Max(whole, 1); n <= whole + 1; n++)
                 {
-                    // Aucun ne tient : le plus petit qui couvre le reste.
-                    foreach (PartInfo t in tanks) if (Propellant(t) >= remaining) pick = t;
-                    if (pick == null) pick = tanks[tanks.Count - 1];
+                    double rest = fuel - n * p;
+                    PartInfo cover = null;
+                    if (rest > 0.02 * fuel)
+                    {
+                        // Le plus petit réservoir qui couvre le reste.
+                        foreach (PartInfo t in tanks) if (Propellant(t) >= rest - 1e-9) cover = t;
+                        if (cover == null) continue;
+                    }
+                    double got = n * p + (cover != null ? Propellant(cover) : 0);
+                    double d = n * main.DryMassT + (cover != null ? cover.DryMassT : 0);
+                    int parts = n + (cover != null ? 1 : 0);
+                    double score = FillScore(fuel, got, d, parts);
+                    if (score < bestScore - 1e-9)
+                    {
+                        bestScore = score;
+                        bestMain = main;
+                        bestCount = n;
+                        bestRest = cover;
+                    }
                 }
-                AddTank(used, pick);
-                actualFuel += Propellant(pick);
-                dry += pick.DryMassT;
-                remaining -= Propellant(pick);
             }
+            if (bestMain == null) return used;
+            for (int i = 0; i < bestCount; i++) AddTank(used, bestMain);
+            if (bestRest != null) AddTank(used, bestRest);
+            actualFuel = bestCount * Propellant(bestMain) + (bestRest != null ? Propellant(bestRest) : 0);
+            dry = bestCount * bestMain.DryMassT + (bestRest != null ? bestRest.DryMassT : 0);
             return used;
         }
     }

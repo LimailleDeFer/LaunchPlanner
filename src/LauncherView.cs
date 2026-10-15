@@ -67,8 +67,9 @@ namespace LaunchPlanner
 
         string Key()
         {
-            return string.Format(CultureInfo.InvariantCulture, "{0:0}|{1:0.00}|{2}|{3:0.00}|{4}",
-                TargetDeltaV(), PayloadMass(), minimizeCost, minLiftoffTwr, PartInventory.Parts.Count);
+            return string.Format(CultureInfo.InvariantCulture, "{0:0}|{1:0.00}|{2}|{3:0.00}|{4}|{5:0.0}|{6}",
+                TargetDeltaV(), PayloadMass(), minimizeCost, minLiftoffTwr, PartInventory.Parts.Count,
+                mission.Payload.HeightM, mission.Payload.PartCount);
         }
 
         /// <summary>Appelé à chaque image tant que la fenêtre est ouverte : relance le calcul si la mission a changé.</summary>
@@ -133,6 +134,13 @@ namespace LaunchPlanner
                 req.HomeAtmosphere = home.HasAtmosphere;
                 req.AscentDeltaV = MissionBudget.Ascent(home);
             }
+            SiteLimits.Apply(req);
+            if (!manualMass && mission.Payload.Present)
+            {
+                req.PayloadHeight = mission.Payload.HeightM;
+                req.PayloadWidth = mission.Payload.WidthM;
+                req.PayloadParts = mission.Payload.PartCount;
+            }
             designsDeltaV = req.TargetDeltaV;
             designsMass = req.PayloadMass;
             runningKey = key;
@@ -188,6 +196,8 @@ namespace LaunchPlanner
 
             Label(string.Format("Variantes pour <b>{0:0} m/s</b> avec <b>{1:0.00} t</b> de charge utile, les étages listés du haut vers le bas :",
                 designsDeltaV, designsMass));
+            if (SiteLimits.Describe.Length > 0)
+                Label("<size=11>Limites du VAB et du pas de tir : " + SiteLimits.Describe + "</size>");
             LauncherDesign best = Recommended();
             scroll = GUILayout.BeginScrollView(scroll, GUILayout.ExpandHeight(true));
             GUILayout.BeginHorizontal();
@@ -278,6 +288,7 @@ namespace LaunchPlanner
 
             Label(string.Format("Masse au décollage <b>{0:0.0} t</b> (lanceur {1:0.0} t)", d.TotalMass, d.LauncherMass));
             Label(string.Format("Coût <b>{0}</b> · TWR au décollage <b>{1:0.00}</b>", Money(d.Cost), d.LiftoffTwr));
+            Label(string.Format(CultureInfo.InvariantCulture, "Hauteur ≈ <b>{0:0.#} m</b> · largeur ≈ {1:0.#} m · {2} pièces (charge utile comprise)", d.HeightM, d.WidthM, d.PartCount));
             string dvColor = d.DeltaV >= designsDeltaV - 1 ? "#66ff66" : "#ff6666";
             Label(string.Format("Δv <color={0}><b>{1:0} m/s</b></color> pour {2:0} demandés", dvColor, d.DeltaV, designsDeltaV));
 
@@ -288,7 +299,7 @@ namespace LaunchPlanner
                 GUILayout.Space(4);
                 string name = i == 0 ? (d.Stages.Count == 1 ? "Étage unique" : "Étage 1 (décollage)") : "Étage " + (i + 1);
                 Label(string.Format("<b>{0}</b> : {1:0.0} t · coût {2} · Δv {3:0} m/s · TWR {4:0.00}", name, s.TotalMass, Money(s.Cost), s.DeltaV, s.Twr));
-                Label("  " + s.EngineCount + " × " + s.Engine.Title);
+                Label("  Ø " + LauncherDesigner.Diameter(s.Size) + " · " + s.EngineCount + " × " + s.Engine.Title);
                 foreach (TankUse t in s.Tanks) Label("  " + t.Count + " × " + t.Tank.Title);
                 if (s.Decoupler != null) Label("  1 × " + s.Decoupler.Title);
                 BoosterPlan b = s.Boosters;

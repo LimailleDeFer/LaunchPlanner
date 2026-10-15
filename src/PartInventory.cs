@@ -129,6 +129,7 @@ namespace LaunchPlanner
                         Sizes = baseInfo.Sizes,
                         Tech = baseInfo.Tech,
                         Category = baseInfo.Category,
+                        HeightM = baseInfo.HeightM,
                         Cost = baseInfo.Cost,
                         Kind = PartKind.Tank,
                         DryMassT = baseInfo.DryMassT + ToDouble(Refl.Call(module, "GetDryMass", subtype)),
@@ -145,6 +146,21 @@ namespace LaunchPlanner
                 }
             }
             return variants;
+        }
+
+        /// <summary>Hauteur d'empilement : écart entre le nœud le plus haut et le plus bas.</summary>
+        static double StackHeight(Part prefab)
+        {
+            double top = double.MinValue, bottom = double.MaxValue;
+            int n = 0;
+            foreach (AttachNode node in prefab.attachNodes)
+            {
+                if (node == null || node.nodeType != AttachNode.NodeType.Stack) continue;
+                top = Math.Max(top, node.position.y);
+                bottom = Math.Min(bottom, node.position.y);
+                n++;
+            }
+            return n >= 2 ? top - bottom : 0;
         }
 
         static double ToDouble(object value)
@@ -167,6 +183,7 @@ namespace LaunchPlanner
                 Category = Refl.Get(ap, "category") != null ? Refl.Get(ap, "category").ToString() : "",
                 Cost = Refl.Num(ap, "cost"),
                 DryMassT = Refl.Num(prefab, "mass"),
+                HeightM = StackHeight(prefab),
             };
 
             ReadResources(ap, prefab, info);
@@ -285,7 +302,7 @@ namespace LaunchPlanner
             string path = Path.Combine(directory, "inventaire.csv");
             CultureInfo ci = CultureInfo.InvariantCulture;
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine("type;nom;variante;titre;source;tailles;tech;debloquee;cout;masse_seche_t;masse_pleine_t;poussee_vide_kN;poussee_sol_kN;isp_vide_s;isp_sol_s;ergols;ressources;categorie");
+            sb.AppendLine("type;nom;variante;titre;source;tailles;tech;debloquee;cout;masse_seche_t;masse_pleine_t;poussee_vide_kN;poussee_sol_kN;isp_vide_s;isp_sol_s;ergols;ressources;categorie;hauteur_m");
             foreach (PartInfo p in Parts)
             {
                 List<string> res = new List<string>();
@@ -296,6 +313,7 @@ namespace LaunchPlanner
                     p.Cost.ToString("0", ci), p.DryMassT.ToString("0.###", ci), p.WetMassT.ToString("0.###", ci),
                     p.ThrustVacKN.ToString("0.#", ci), p.ThrustAslKN.ToString("0.#", ci),
                     p.IspVac.ToString("0", ci), p.IspAsl.ToString("0", ci), p.Propellants, string.Join(" ", res.ToArray()), p.Category,
+                    p.HeightM.ToString("0.###", ci),
                 }));
             }
             File.WriteAllText(path, sb.ToString(), Encoding.UTF8);

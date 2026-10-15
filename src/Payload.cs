@@ -1,4 +1,5 @@
 using System;
+using UnityEngine;
 
 namespace LaunchPlanner
 {
@@ -8,6 +9,8 @@ namespace LaunchPlanner
         public bool Present;
         public string Name = "";
         public int PartCount;
+        public double HeightM;
+        public double WidthM;
         public double MassT;
         public double DryMassT;
         public double DeltaVVac;
@@ -23,6 +26,13 @@ namespace LaunchPlanner
             p.Present = true;
             p.Name = ship.shipName ?? "";
             p.PartCount = ship.parts.Count;
+            try
+            {
+                Vector3 size = ShipConstruction.CalculateCraftSize(ship);
+                p.HeightM = size.y;
+                p.WidthM = Math.Max(size.x, size.z);
+            }
+            catch (Exception) { }
             float dry, fuel;
             ship.GetShipMass(out dry, out fuel);
             p.DryMassT = dry;

@@ -63,9 +63,18 @@ Détails du montage :
 - une copie du dernier lanceur généré est écrite dans `GameData/LaunchPlanner/dernier-lanceur.craft` : à joindre
   avec `KSP.log` en cas de problème.
 
-Seules les pièces débloquées sont utilisées. Les adaptateurs ne sont pas proposés comme réservoirs : si un étage
-change de diamètre, une note le signale. Le calcul suppose un lanceur empilé ; les boosters sont montés
+Seules les pièces débloquées sont utilisées. Le calcul suppose un lanceur empilé ; les boosters sont montés
 sur des découpleurs radiaux.
+
+Forme du lanceur :
+- chaque étage prend le diamètre qui le remplit avec peu de réservoirs (un réservoir principal répété, au plus
+  un réservoir de complément), sans être plus étroit que l'étage qu'il porte : la base est large et le lanceur
+  s'affine vers le haut ;
+- quand l'étage du dessous est plus large, un réservoir adaptateur débloqué coiffe l'étage ; sinon une note
+  demande d'ajouter un adaptateur structurel ;
+- les limites du VAB (nombre de pièces) et du pas de tir (hauteur, largeur, masse) selon le niveau des bâtiments
+  sont respectées, charge utile comprise ; un lanceur trop haut est repris avec des réservoirs plus larges.
+  En bac à sable, il n'y a pas de limite.
 
 ## Ce qu'il faut vérifier (étape 1)
 
