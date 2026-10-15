@@ -16,10 +16,12 @@ namespace LaunchPlanner
     {
         public string Name;
         public string Variant = "";  // contenu choisi pour un réservoir commutable (B9PartSwitch)
+        public string VariantModule = "";  // moduleID du ModuleB9PartSwitch qui porte ce contenu
         public string Title;
         public string Source;      // dossier de GameData d'où vient la pièce (Squad, SquadExpansion, nom du mod…)
         public string Sizes;       // profils de fixation, ex. "size1, srf"
         public string Tech;
+        public string Category = "";  // catégorie de l'éditeur (Coupling pour les découpleurs)
         public bool Unlocked;
         public PartKind Kind;
         public double Cost;

@@ -123,10 +123,12 @@ namespace LaunchPlanner
                     {
                         Name = baseInfo.Name,
                         Variant = name,
+                        VariantModule = Refl.Str(module, "moduleID"),
                         Title = baseInfo.Title + " [" + (title.Length > 0 ? title : name) + "]",
                         Source = baseInfo.Source,
                         Sizes = baseInfo.Sizes,
                         Tech = baseInfo.Tech,
+                        Category = baseInfo.Category,
                         Cost = baseInfo.Cost,
                         Kind = PartKind.Tank,
                         DryMassT = baseInfo.DryMassT + ToDouble(Refl.Call(module, "GetDryMass", subtype)),
@@ -162,6 +164,7 @@ namespace LaunchPlanner
                 Source = SourceOf(Refl.Str(ap, "partUrl")),
                 Sizes = Refl.Str(ap, "bulkheadProfiles"),
                 Tech = Refl.Str(ap, "TechRequired"),
+                Category = Refl.Get(ap, "category") != null ? Refl.Get(ap, "category").ToString() : "",
                 Cost = Refl.Num(ap, "cost"),
                 DryMassT = Refl.Num(prefab, "mass"),
             };
@@ -282,7 +285,7 @@ namespace LaunchPlanner
             string path = Path.Combine(directory, "inventaire.csv");
             CultureInfo ci = CultureInfo.InvariantCulture;
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine("type;nom;variante;titre;source;tailles;tech;debloquee;cout;masse_seche_t;masse_pleine_t;poussee_vide_kN;poussee_sol_kN;isp_vide_s;isp_sol_s;ergols;ressources");
+            sb.AppendLine("type;nom;variante;titre;source;tailles;tech;debloquee;cout;masse_seche_t;masse_pleine_t;poussee_vide_kN;poussee_sol_kN;isp_vide_s;isp_sol_s;ergols;ressources;categorie");
             foreach (PartInfo p in Parts)
             {
                 List<string> res = new List<string>();
@@ -292,7 +295,7 @@ namespace LaunchPlanner
                     p.Kind.ToString(), p.Name, p.Variant, p.Title.Replace(";", ","), p.Source, p.Sizes, p.Tech, p.Unlocked ? "oui" : "non",
                     p.Cost.ToString("0", ci), p.DryMassT.ToString("0.###", ci), p.WetMassT.ToString("0.###", ci),
                     p.ThrustVacKN.ToString("0.#", ci), p.ThrustAslKN.ToString("0.#", ci),
-                    p.IspVac.ToString("0", ci), p.IspAsl.ToString("0", ci), p.Propellants, string.Join(" ", res.ToArray()),
+                    p.IspVac.ToString("0", ci), p.IspAsl.ToString("0", ci), p.Propellants, string.Join(" ", res.ToArray()), p.Category,
                 }));
             }
             File.WriteAllText(path, sb.ToString(), Encoding.UTF8);

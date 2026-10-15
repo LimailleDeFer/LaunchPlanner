@@ -40,6 +40,11 @@ namespace LaunchPlanner
         /// <summary>La variante choisie, que l'étape 4 construira dans l'éditeur.</summary>
         public static LauncherDesign Chosen;
 
+        // Construction dans l'éditeur (étape 4) : demandée depuis l'interface, faite dans Update.
+        LauncherDesign buildRequest;
+        string buildMessage = "";
+        readonly List<string> buildNotes = new List<string>();
+
         GUIStyle rich;
         GUIStyle card;
 
@@ -69,6 +74,24 @@ namespace LaunchPlanner
         /// <summary>Appelé à chaque image tant que la fenêtre est ouverte : relance le calcul si la mission a changé.</summary>
         public void Update()
         {
+            if (buildRequest != null)
+            {
+                LauncherDesign d = buildRequest;
+                buildRequest = null;
+                buildNotes.Clear();
+                try
+                {
+                    string error = CraftSpawner.Spawn(d, buildNotes);
+                    buildMessage = error != null ? "<color=#ff6666>" + error + "</color>"
+                        : "<color=#66ff66>Le lanceur « " + d.Variant + " » est accroché à ta souris : clique sous ta charge utile " +
+                          "pour le fixer par le découpleur du haut (ou dans le vide s'il n'y a pas encore de vaisseau).</color>";
+                }
+                catch (Exception e)
+                {
+                    Debug.LogException(e);
+                    buildMessage = "<color=#ff6666>Erreur pendant la construction : " + e.Message + "</color>";
+                }
+            }
             lock (sync)
             {
                 if (pending != null || pendingError != null)
@@ -173,7 +196,15 @@ namespace LaunchPlanner
             GUILayout.EndScrollView();
 
             if (Chosen != null)
-                Label("Variante choisie : <b>" + Chosen.Variant + "</b>. La construction automatique dans l'éditeur arrive à l'étape 4.");
+            {
+                GUILayout.BeginHorizontal();
+                Label("Variante choisie : <b>" + Chosen.Variant + "</b>", GUILayout.Width(300));
+                if (GUILayout.Button("Construire dans l'éditeur", GUILayout.Width(200))) buildRequest = Chosen;
+                GUILayout.FlexibleSpace();
+                GUILayout.EndHorizontal();
+            }
+            if (buildMessage.Length > 0) Label(buildMessage);
+            foreach (string note in buildNotes) Label("<color=#ffbf33>" + note + "</color>");
         }
 
         void DrawSettings()
@@ -250,6 +281,7 @@ namespace LaunchPlanner
             string dvColor = d.DeltaV >= designsDeltaV - 1 ? "#66ff66" : "#ff6666";
             Label(string.Format("Δv <color={0}><b>{1:0} m/s</b></color> pour {2:0} demandés", dvColor, d.DeltaV, designsDeltaV));
 
+            if (d.PayloadDecoupler != null) Label("<size=11>Sous la charge utile : 1 × " + d.PayloadDecoupler.Title + "</size>");
             for (int i = d.Stages.Count - 1; i >= 0; i--)
             {
                 StagePlan s = d.Stages[i];

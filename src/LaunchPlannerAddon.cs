@@ -82,6 +82,7 @@ namespace LaunchPlanner
 
         void OnDestroy()
         {
+            if (editorLocked) SetEditorLock(false);
             if (button == null) return;
             try
             {
@@ -94,10 +95,31 @@ namespace LaunchPlanner
             }
         }
 
+        const string LockId = "LaunchPlannerWindow";
+        bool editorLocked;
+
         void OnGUI()
         {
-            if (!visible) return;
-            windowRect = GUILayout.Window(WindowId, windowRect, DrawWindow, "Planificateur de lanceur");
+            if (visible) windowRect = GUILayout.Window(WindowId, windowRect, DrawWindow, "Planificateur de lanceur");
+            // Tant que la souris est sur la fenêtre, l'éditeur ignore les clics (sinon ils prennent ou posent des pièces derrière).
+            bool over = visible && windowRect.Contains(Event.current.mousePosition);
+            if (over != editorLocked) SetEditorLock(over);
+        }
+
+        void SetEditorLock(bool locked)
+        {
+            editorLocked = locked;
+            try
+            {
+                EditorLogic editor = EditorLogic.fetch;
+                if (editor == null) return;
+                if (locked) editor.Lock(false, false, false, LockId);
+                else editor.Unlock(LockId);
+            }
+            catch (Exception e)
+            {
+                Debug.LogException(e);
+            }
         }
 
         void DrawWindow(int id)

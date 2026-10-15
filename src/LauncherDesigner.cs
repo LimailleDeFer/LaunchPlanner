@@ -85,6 +85,7 @@ namespace LaunchPlanner
         public double DeltaV;
         public double LiftoffTwr;
         public List<string> Notes = new List<string>();
+        public PartInfo PayloadDecoupler;   // découpleur entre la charge utile et le dernier étage
     }
 
     public class DesignRequest
@@ -206,7 +207,7 @@ namespace LaunchPlanner
                     if (!mixtures.TryGetValue(key, out mix)) mixtures[key] = mix = new Mixture { Key = key };
                     mix.Tanks.Add(p);
                 }
-                else if (p.Kind == PartKind.Decoupler) decouplers.Add(p);
+                else if (p.Kind == PartKind.Decoupler && IsRealDecoupler(p)) decouplers.Add(p);
                 // Un propulseur à poudre qui brûle moins de 15 s (tour de sauvetage, fusée de séparation) n'est pas un booster.
                 else if (p.Kind == PartKind.Booster && p.ThrustAslKN > 0 && p.IspVac > 0 && Propellant(p) > 0 && p.BurnTimeS >= 15)
                     solidBoosters.Add(p);
@@ -324,6 +325,17 @@ namespace LaunchPlanner
             return best == double.MaxValue ? 0 : best;
         }
 
+        /// <summary>
+        /// Beaucoup de pièces savent se détacher (boucliers thermiques, capsules, parachutes, coiffes…) : on ne garde que
+        /// celles rangées dans la catégorie « Couplage » de l'éditeur, ou, sans catégorie connue, celles qui s'appellent découpleur.
+        /// </summary>
+        static bool IsRealDecoupler(PartInfo p)
+        {
+            if (!string.IsNullOrEmpty(p.Category)) return p.Category == "Coupling";
+            string t = (p.Title + " " + p.Name).ToLowerInvariant();
+            return t.Contains("decoupl") || t.Contains("découpl") || t.Contains("separator") || t.Contains("séparateur") || t.Contains("interstage");
+        }
+
         PartInfo StackDecoupler(string size)
         {
             PartInfo best = null;
@@ -338,11 +350,16 @@ namespace LaunchPlanner
             return best;
         }
 
+        // Les plus petits découpleurs radiaux cèdent sous de gros boosters : on prend le plus robuste qui reste léger.
         PartInfo RadialDecoupler()
         {
             PartInfo best = null;
             foreach (PartInfo d in decouplers)
-                if (SizeOf(d).Length == 0 && (best == null || d.DryMassT < best.DryMassT)) best = d;
+            {
+                if (SizeOf(d).Length > 0) continue;
+                if (best == null || (d.DryMassT <= 0.1 && (best.DryMassT > 0.1 || d.DryMassT > best.DryMassT)) ||
+                    (best.DryMassT > 0.1 && d.DryMassT < best.DryMassT)) best = d;
+            }
             return best;
         }
 
@@ -846,6 +863,7 @@ namespace LaunchPlanner
 
         LauncherDesign Quantized(LauncherDesign d, string variant, string description)
         {
+            d.PayloadDecoupler = StackDecoupler(d.Stages[d.Stages.Count - 1].Size);
             d.Variant = variant;
             d.Description = description;
 

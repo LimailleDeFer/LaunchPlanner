@@ -15,7 +15,8 @@ que les pièces débloquées, y compris celles des autres mods.
 3. **Recommandation du lanceur (fait)** : onglet « Lanceurs ». Cinq variantes côte à côte (SSTO, deux étages,
    boosters à poudre, boosters liquides, asperges), chacune avec ses pièces exactes, sa masse, son coût,
    son Δv et son TWR par étage.
-4. Génération automatique du vaisseau dans le VAB.
+4. **Construction automatique dans le VAB (fait)** : le bouton « Construire dans l'éditeur » assemble la variante
+   choisie (réservoirs, moteurs, découpleurs, boosters, étages) et la met en main, prête à être fixée sous la charge utile.
 
 ## Installation
 
@@ -45,7 +46,22 @@ Le budget est une estimation par transferts de Hohmann, proche de la carte Δv c
    est marquée « recommandée ».
 4. Réglages : optimiser la masse ou le coût, TWR minimal au décollage (1,3 par défaut). Sans vaisseau dans
    l'éditeur, on saisit la masse de la charge utile à la main.
-5. « Choisir cette variante » retient le lanceur que l'étape 4 construira dans l'éditeur.
+5. « Choisir cette variante » retient le lanceur, puis « Construire dans l'éditeur » l'assemble.
+
+## Utilisation (étape 4)
+
+1. Dans l'onglet « Lanceurs », choisis une variante puis clique « Construire dans l'éditeur ».
+2. Le lanceur apparaît accroché à la souris, comme un sous-assemblage. Approche son découpleur du haut du nœud
+   du bas de ta charge utile et clique pour le fixer (sans vaisseau dans l'éditeur, clique dans le vide : il devient le vaisseau).
+3. Vérifie l'ordre des étages dans la colonne de droite : décollage, largage des boosters, puis chaque étage.
+
+Détails du montage :
+- les réservoirs commutables (B9PartSwitch, CryoTanks) sont réglés sur le bon contenu ;
+- au-delà d'un moteur par étage, les moteurs sont fixés en grappe sous le réservoir ;
+- en asperges, le transfert de carburant est activé sur les découpleurs radiaux : le jeu vide d'abord les paires
+  larguées en premier ;
+- une copie du dernier lanceur généré est écrite dans `GameData/LaunchPlanner/dernier-lanceur.craft` : à joindre
+  avec `KSP.log` en cas de problème.
 
 Seules les pièces débloquées sont utilisées. Les adaptateurs ne sont pas proposés comme réservoirs : si un étage
 change de diamètre, une note le signale. Le calcul suppose un lanceur empilé ; les boosters sont montés
@@ -82,6 +98,6 @@ Essai du calcul des lanceurs hors du jeu, à partir d'un `inventaire.csv` export
 (arguments : masse de la charge utile en t, Δv en m/s, et `stock` pour se limiter aux pièces du jeu de base) :
 
 ```
-mcs tests/LauncherDesignerTest.cs src/LauncherDesigner.cs src/PartInfo.cs -out:build/designer.exe
+mcs tests/LauncherDesignerTest.cs src/LauncherDesigner.cs src/PartInfo.cs src/CraftBuilder.cs src/CraftWriter.cs -out:build/designer.exe
 mono build/designer.exe inventaire.csv 5 4500
 ```

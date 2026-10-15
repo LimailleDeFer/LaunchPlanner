@@ -1,5 +1,5 @@
 // Lance le calcul des lanceurs sur un inventaire exporté du jeu (bouton « Exporter CSV »).
-//   mcs tests/LauncherDesignerTest.cs src/LauncherDesigner.cs src/PartInfo.cs -out:build/designer.exe
+//   mcs tests/LauncherDesignerTest.cs src/LauncherDesigner.cs src/PartInfo.cs src/CraftBuilder.cs src/CraftWriter.cs -out:build/designer.exe
 //   mono build/designer.exe inventaire.csv [masse charge utile t] [Δv m/s]
 using System;
 using System.Collections.Generic;
@@ -37,6 +37,7 @@ static class LauncherDesignerTest
                 ThrustVacKN = D(c[col["poussee_vide_kN"]]), ThrustAslKN = D(c[col["poussee_sol_kN"]]),
                 IspVac = D(c[col["isp_vide_s"]]), IspAsl = D(c[col["isp_sol_s"]]), Propellants = c[col["ergols"]],
             };
+            if (col.ContainsKey("categorie")) p.Category = c[col["categorie"]];
             foreach (string r in c[col["ressources"]].Split(' '))
             {
                 int eq = r.IndexOf('=');
@@ -91,6 +92,56 @@ static class LauncherDesignerTest
             foreach (string n in d.Notes) Console.WriteLine("   note : " + n);
             if (d.Valid && d.DeltaV < req.TargetDeltaV - 1) bad++;
         }
+        // Génération du vaisseau (étape 4) avec des formes de pièces approximatives : CRAFT=dossier écrit un .craft par variante.
+        string craftDir = Environment.GetEnvironmentVariable("CRAFT");
+        if (!string.IsNullOrEmpty(craftDir))
+            foreach (LauncherDesign d in designs)
+            {
+                if (!d.Valid) continue;
+                CraftBuilder builder = new CraftBuilder(new FakeShapes());
+                List<CraftPart> craft = builder.Build(d);
+                bad += CheckCraft(craft);
+                string path = System.IO.Path.Combine(craftDir, d.Variant.Replace(' ', '-') + ".craft");
+                System.IO.File.WriteAllText(path, CraftWriter.Write(builder, craft, d.Variant, "1.12.5").ToText());
+                Console.WriteLine("{0} : {1} pièces, {2} étages d'activation → {3}", d.Variant, craft.Count, builder.ActionCount, path);
+                foreach (string n in builder.Notes) Console.WriteLine("   note : " + n);
+            }
         return bad == 0 ? 0 : 1;
+    }
+
+    /// <summary>Vérifie la cohérence des liens : une seule racine, parents et enfants réciproques, symétries réciproques.</summary>
+    static int CheckCraft(List<CraftPart> craft)
+    {
+        int errors = 0;
+        int roots = craft.FindAll(p => p.Parent == null).Count;
+        if (roots != 1) { Console.WriteLine("   ERREUR : {0} racines", roots); errors++; }
+        if (craft[0].Parent != null) { Console.WriteLine("   ERREUR : la première pièce n'est pas la racine"); errors++; }
+        foreach (CraftPart p in craft)
+        {
+            if (p.Parent != null && !p.Parent.Children.Contains(p)) { Console.WriteLine("   ERREUR : lien manquant " + p.Key); errors++; }
+            foreach (CraftPart q in p.Symmetry)
+                if (!q.Symmetry.Contains(p) || q.Info != p.Info) { Console.WriteLine("   ERREUR : symétrie " + p.Key); errors++; }
+            if (p.Attach == AttachKind.Stack && (p.SelfNode == null || p.ParentNode == null)) { Console.WriteLine("   ERREUR : nœud " + p.Key); errors++; }
+            if (p.Info.Name.Contains("_")) { Console.WriteLine("   ERREUR : nom avec _ " + p.Key); errors++; }
+        }
+        return errors;
+    }
+}
+
+/// <summary>Formes approximatives : hauteur des réservoirs selon leur volume, moteurs de 1,5 m, découpleurs de 0,2 m.</summary>
+class FakeShapes : IPartShapes
+{
+    public PartShape Get(PartInfo p)
+    {
+        double d = CraftBuilder.DiameterOf(LauncherDesigner.SizeOf(p));
+        double h = p.Kind == PartKind.Decoupler ? 0.2 : p.Kind == PartKind.Engine ? 1.5
+            : Math.Max(0.3, (p.WetMassT - p.DryMassT) / 1.0 / (Math.PI * d * d / 4));
+        PartShape s = new PartShape { Diameter = d, TopNode = "top", BottomNode = "bottom", TopY = h / 2, BottomY = -h / 2 };
+        s.SrfPos = new Vec3(0, 0, p.Kind == PartKind.Decoupler ? 0.1 : -d / 2);
+        s.SrfDir = new Vec3(0, 0, p.Kind == PartKind.Decoupler ? -1 : 1);
+        s.Modules.Add("ModulePartVariants"); s.ModuleIds.Add("");
+        if (p.Variant.Length > 0) { s.Modules.Add("ModuleB9PartSwitch"); s.ModuleIds.Add(p.VariantModule); }
+        if (p.Kind == PartKind.Decoupler) { s.Modules.Add("ModuleToggleCrossfeed"); s.ModuleIds.Add(""); }
+        return s;
     }
 }
