@@ -21,6 +21,12 @@ namespace LaunchPlanner
 
         GUIStyle rich;
 
+        /// <summary>Dernier budget calculé, lu par l'onglet « Lanceurs ».</summary>
+        public Budget Current { get; private set; }
+        public BodyInfo Destination { get { return destination; } }
+        public string MissionName { get { return MissionTypes[missionType]; } }
+        public Payload Payload { get { return payload; } }
+
         public void Refresh()
         {
             KspBodies.Refresh();
@@ -38,6 +44,13 @@ namespace LaunchPlanner
             if (Time.realtimeSinceStartup < nextPayloadRead) return;
             nextPayloadRead = Time.realtimeSinceStartup + 1f;
             payload = Payload.FromEditor();
+            ComputeBudget();
+        }
+
+        Budget ComputeBudget()
+        {
+            if (destination == null || KspBodies.Home == null) return Current = null;
+            return Current = MissionBudget.Compute(KspBodies.Home, destination, (MissionType)missionType, marginPercent / 100.0, PayloadDeltaV());
         }
 
         void Bold(string text, params GUILayoutOption[] options)
@@ -137,8 +150,7 @@ namespace LaunchPlanner
         void DrawBudget()
         {
             if (destination == null) return;
-            double margin = marginPercent / 100.0;
-            Budget budget = MissionBudget.Compute(KspBodies.Home, destination, (MissionType)missionType, margin, PayloadDeltaV());
+            Budget budget = ComputeBudget();
 
             Bold("Budget Δv : " + KspBodies.Home.Name + " → " + destination.Name);
             GUILayout.BeginHorizontal();

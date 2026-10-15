@@ -12,8 +12,9 @@ que les pièces débloquées, y compris celles des autres mods.
 2. **Budget Δv de la mission (fait)** : onglet « Mission ». On choisit la destination et le type de mission ;
    le vaisseau ouvert dans l'éditeur sert de charge utile, et son propre Δv est déduit de ce que le lanceur
    doit fournir.
-3. Recommandation du lanceur, avec plusieurs variantes à comparer : SSTO, boosters à poudre, boosters
-   liquides, asperges (boosters largués 2 par 2 qui alimentent le corps central).
+3. **Recommandation du lanceur (fait)** : onglet « Lanceurs ». Cinq variantes côte à côte (SSTO, deux étages,
+   boosters à poudre, boosters liquides, asperges), chacune avec ses pièces exactes, sa masse, son coût,
+   son Δv et son TWR par étage.
 4. Génération automatique du vaisseau dans le VAB.
 
 ## Installation
@@ -34,6 +35,21 @@ que les pièces débloquées, y compris celles des autres mods.
 Le Δv propre de la charge utile vient du calcul du jeu (dans le vide). On peut aussi le saisir à la main.
 Le budget est une estimation par transferts de Hohmann, proche de la carte Δv communautaire ; la marge
 (10 % par défaut) couvre les changements de plan et les corrections.
+
+## Utilisation (étape 3)
+
+1. Règle la mission dans l'onglet « Mission » (destination, type, marge).
+2. Ouvre l'onglet « Lanceurs » : le calcul démarre tout seul et se refait quand la mission ou la charge utile change.
+3. Chaque carte montre une variante, étages listés du haut vers le bas : moteurs, réservoirs, découpleurs,
+   boosters, avec la masse, le coût, le Δv et le TWR de chaque étage. La plus légère (ou la moins chère)
+   est marquée « recommandée ».
+4. Réglages : optimiser la masse ou le coût, TWR minimal au décollage (1,3 par défaut). Sans vaisseau dans
+   l'éditeur, on saisit la masse de la charge utile à la main.
+5. « Choisir cette variante » retient le lanceur que l'étape 4 construira dans l'éditeur.
+
+Seules les pièces débloquées sont utilisées. Les adaptateurs ne sont pas proposés comme réservoirs : si un étage
+change de diamètre, une note le signale. Le calcul suppose un lanceur empilé ; les boosters sont montés
+sur des découpleurs radiaux.
 
 ## Ce qu'il faut vérifier (étape 1)
 
@@ -60,4 +76,12 @@ Tests du calcul de Δv (comparés à la carte Δv communautaire) :
 
 ```
 mcs tests/MissionBudgetTest.cs src/MissionBudget.cs -out:build/test.exe && mono build/test.exe
+```
+
+Essai du calcul des lanceurs hors du jeu, à partir d'un `inventaire.csv` exporté par le mod
+(arguments : masse de la charge utile en t, Δv en m/s, et `stock` pour se limiter aux pièces du jeu de base) :
+
+```
+mcs tests/LauncherDesignerTest.cs src/LauncherDesigner.cs src/PartInfo.cs -out:build/designer.exe
+mono build/designer.exe inventaire.csv 5 4500
 ```

@@ -9,15 +9,21 @@ namespace LaunchPlanner
     public class LaunchPlannerAddon : MonoBehaviour
     {
         const int WindowId = 0x4C504C31;
-        static readonly string[] Tabs = { "Mission", "Pièces disponibles" };
+        static readonly string[] Tabs = { "Mission", "Lanceurs", "Pièces disponibles" };
 
         ApplicationLauncherButton button;
         bool buttonFailed;
         bool visible;
-        Rect windowRect = new Rect(120, 80, 900, 560);
+        Rect windowRect = new Rect(100, 70, 1000, 620);
         int tab;
         readonly MissionView mission = new MissionView();
         readonly PartsView parts = new PartsView();
+        LauncherView launchers;
+
+        void Awake()
+        {
+            launchers = new LauncherView(mission);
+        }
 
         void Start()
         {
@@ -45,6 +51,9 @@ namespace LaunchPlanner
             if (visible)
             {
                 try { mission.Update(); }
+                catch (Exception e) { Debug.LogException(e); }
+                // Le calcul des lanceurs ne tourne que lorsque l'onglet est affiché.
+                try { if (tab == 1) launchers.Update(); }
                 catch (Exception e) { Debug.LogException(e); }
             }
             if (button != null || buttonFailed) return;
@@ -94,13 +103,14 @@ namespace LaunchPlanner
         void DrawWindow(int id)
         {
             GUILayout.BeginHorizontal();
-            tab = GUILayout.Toolbar(tab, Tabs, GUILayout.Width(300));
+            tab = GUILayout.Toolbar(tab, Tabs, GUILayout.Width(420));
             GUILayout.FlexibleSpace();
             if (buttonFailed && GUILayout.Button("Fermer", GUILayout.Width(70))) visible = false;
             GUILayout.EndHorizontal();
             GUILayout.Space(4);
 
             if (tab == 0) mission.Draw();
+            else if (tab == 1) launchers.Draw();
             else parts.Draw();
             GUI.DragWindow();
         }
