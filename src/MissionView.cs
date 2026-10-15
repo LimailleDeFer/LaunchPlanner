@@ -18,6 +18,7 @@ namespace LaunchPlanner
         bool manualDeltaV;
         string manualDeltaVText = "0";
         float nextPayloadRead;
+        int launcherLastPhase = -1;   // -1 : selon le Δv de la charge utile
 
         GUIStyle rich;
 
@@ -50,7 +51,8 @@ namespace LaunchPlanner
         Budget ComputeBudget()
         {
             if (destination == null || KspBodies.Home == null) return Current = null;
-            return Current = MissionBudget.Compute(KspBodies.Home, destination, (MissionType)missionType, marginPercent / 100.0, PayloadDeltaV());
+            return Current = MissionBudget.Compute(KspBodies.Home, destination, (MissionType)missionType, marginPercent / 100.0, PayloadDeltaV(),
+                launcherLastPhase);
         }
 
         void Bold(string text, params GUILayoutOption[] options)
@@ -172,6 +174,19 @@ namespace LaunchPlanner
                 GUILayout.EndHorizontal();
             }
             GUILayout.EndScrollView();
+
+            // Jusqu'où le lanceur emmène la charge utile (par exemple : un atterrisseur qui fait lui-même la suite).
+            GUILayout.Label("Le lanceur emmène la charge utile jusqu'à :");
+            string[] choices = new string[budget.Phases.Count + 1];
+            choices[0] = "Automatique (selon son Δv)";
+            for (int i = 0; i < budget.Phases.Count; i++) choices[i + 1] = "Fin de : " + budget.Phases[i].Name;
+            if (launcherLastPhase >= budget.Phases.Count) launcherLastPhase = -1;
+            int choice = GUILayout.SelectionGrid(launcherLastPhase + 1, choices, 2);
+            if (choice != launcherLastPhase + 1)
+            {
+                launcherLastPhase = choice - 1;
+                budget = ComputeBudget();
+            }
 
             GUILayout.Label(string.Format("Total : {0:0} m/s, soit {1:0} m/s avec la marge de {2} %.",
                 budget.Total, budget.TotalWithMargin, marginPercent));

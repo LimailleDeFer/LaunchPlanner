@@ -761,9 +761,21 @@ namespace LaunchPlanner
         readonly List<LauncherDesign> pool = new List<LauncherDesign>();
         const int PoolSize = 12;
 
+        // Raisons de rejet pendant la recherche de la variante en cours, pour expliquer un échec.
+        readonly Dictionary<string, int> rejections = new Dictionary<string, int>();
+
         LauncherDesign Better(LauncherDesign best, LauncherDesign candidate)
         {
-            if (!Constraints(candidate)) return best;
+            string problem = ConstraintProblem(candidate);
+            if (problem != null)
+            {
+                int paren = problem.IndexOf(" (");
+                string key = paren > 0 ? problem.Substring(0, paren) : problem;
+                int n;
+                rejections.TryGetValue(key, out n);
+                rejections[key] = n + 1;
+                return best;
+            }
             double score = Score(candidate);
             bool forPool = pool.Count < PoolSize || score < Score(pool[pool.Count - 1]);
             bool forBest = best == null || score < Score(best);
@@ -820,15 +832,15 @@ namespace LaunchPlanner
             List<Upper> front = UpperFront();
             Trace("front " + front.Count);
 
-            pool.Clear(); Ssto();
+            pool.Clear(); rejections.Clear(); Ssto();
             result.Add(Finish("SSTO", "Un seul étage, sans largage."));
-            pool.Clear(); TwoStages(front, null);
+            pool.Clear(); rejections.Clear(); TwoStages(front, null);
             result.Add(Finish("Deux étages", "Deux étages empilés, sans boosters."));
-            pool.Clear(); TwoStages(front, "solid");
+            pool.Clear(); rejections.Clear(); TwoStages(front, "solid");
             result.Add(Finish("Boosters à poudre", "Deux étages et des propulseurs à poudre largués en vol."));
-            pool.Clear(); TwoStages(front, "liquid");
+            pool.Clear(); rejections.Clear(); TwoStages(front, "liquid");
             result.Add(Finish("Boosters liquides", "Deux étages et des boosters liquides largués ensemble."));
-            pool.Clear(); TwoStages(front, "asparagus");
+            pool.Clear(); rejections.Clear(); TwoStages(front, "asparagus");
             result.Add(Finish("Asperges",
                 "Boosters liquides largués 2 par 2 ; chaque paire alimente le reste du lanceur avant d'être larguée."));
             Trace("fin");
@@ -1040,7 +1052,12 @@ namespace LaunchPlanner
         {
             if (variant == "Boosters à poudre" && solidBoosters.Count == 0) return "Aucun propulseur à poudre débloqué.";
             if (lowerEngines.Count == 0) return "Aucun moteur utilisable au décollage n'est débloqué.";
-            return "Aucune combinaison de pièces débloquées n'atteint le Δv demandé avec un TWR suffisant.";
+            string main = null;
+            int count = 0;
+            foreach (KeyValuePair<string, int> r in rejections)
+                if (r.Value > count) { count = r.Value; main = r.Key; }
+            return "Aucune combinaison de pièces débloquées n'atteint le Δv demandé" +
+                (main != null ? " ; le plus souvent : " + main + "." : " avec un TWR suffisant.");
         }
 
         public static string Diameter(string size)
