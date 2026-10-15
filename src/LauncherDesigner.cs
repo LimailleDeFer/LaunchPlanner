@@ -189,6 +189,9 @@ namespace LaunchPlanner
             foreach (PartInfo p in parts)
             {
                 if (!p.Unlocked || p.Kind != PartKind.Booster || (p.Sizes ?? "").Trim() != "srf") continue;
+                // Une vraie fusée de séparation est minuscule : on écarte les « packs » de séparation longs comme un booster
+                // et les pièces retirées de leur mod.
+                if (p.WetMassT > 0.1 || p.Title.IndexOf("Deprecated", StringComparison.OrdinalIgnoreCase) >= 0) continue;
                 double burn = p.BurnTimeS;
                 if (p.ThrustVacKN <= 0 || p.ThrustVacKN > 100 || burn < 1 || burn > 15) continue;
                 string n = (p.Name + " " + p.Title).ToLowerInvariant();
@@ -1337,7 +1340,19 @@ namespace LaunchPlanner
             if (b != null && !b.Solid)
             {
                 string bs = ChooseSize(b.Fuel, b.Mixture, b.Part, 1, 0, CraftBuilder.DiameterOf(s.Size));
-                b.Tanks = Fill(b.Fuel, b.Mixture, bs, out b.Fuel, out b.TankDry);
+                // Un booster plus haut que le corps central dépasserait dessous : on l'élargit jusqu'à ce qu'il tienne.
+                double coreHeight = TanksHeight(s.Tanks) + HeightOf(s.Engine);
+                Mixture bm;
+                if (heightsKnown && coreHeight > 0 && mixtures.TryGetValue(b.Mixture, out bm))
+                    foreach (string size in bm.Sizes)
+                    {
+                        double bd = CraftBuilder.DiameterOf(size);
+                        if (bd < CraftBuilder.DiameterOf(bs) - 0.01 || bd > CraftBuilder.DiameterOf(s.Size) + 0.01) continue;
+                        double bf, btd;
+                        List<TankUse> bt = Fill(b.Fuel, b.Mixture, size, out bf, out btd, true);
+                        if (bt.Count > 0 && TanksHeight(bt) + HeightOf(b.Part) <= 0.95 * coreHeight) { bs = size; break; }
+                    }
+                b.Tanks = Fill(b.Fuel, b.Mixture, bs, out b.Fuel, out b.TankDry, true);
             }
         }
 
@@ -1485,7 +1500,8 @@ namespace LaunchPlanner
             return dry + (extra >= 0 ? 0.5 * extra : 3 * -extra) + 0.02 * fuel * parts;
         }
 
-        List<TankUse> Fill(double fuel, string mixture, string size, out double actualFuel, out double dry)
+        /// <param name="uniform">Un seul modèle de réservoir (boosters) : pas de réservoir d'une autre famille pour le reste.</param>
+        List<TankUse> Fill(double fuel, string mixture, string size, out double actualFuel, out double dry, bool uniform = false)
         {
             List<TankUse> used = new List<TankUse>();
             actualFuel = 0;
@@ -1516,6 +1532,7 @@ namespace LaunchPlanner
                     PartInfo cover = null;
                     if (rest > 0.02 * fuel)
                     {
+                        if (uniform) continue;
                         // Le plus petit réservoir qui couvre le reste.
                         foreach (PartInfo t in tanks) if (Propellant(t) >= rest - 1e-9) cover = t;
                         if (cover == null) continue;

@@ -489,8 +489,7 @@ namespace LaunchPlanner
                 CraftPart bottomPart = b.Solid ? mine[mine.Count - 1] : mine[Math.Max(first, mine.Count - 2)];
                 int activation = mine[0].Activation;
                 Vec3 outward = new Vec3(mine[first].Pos.X - core.Pos.X, 0, mine[first].Pos.Z - core.Pos.Z).Unit;
-                // Gaz vers le corps central et 20° vers le haut : poussée vers l'extérieur et légèrement freinante.
-                Vec3 exhaust = outward * -Math.Cos(20 * Math.PI / 180) + new Vec3(0, Math.Sin(20 * Math.PI / 180), 0);
+                Vec3 toCore = outward * -1;
                 for (int end = 0; end < 2; end++)
                 {
                     CraftPart host = end == 0 ? topPart : bottomPart;
@@ -498,15 +497,13 @@ namespace LaunchPlanner
                     double y = end == 0 ? Top(host) - Math.Min(0.6, 0.15 * span) : Bottom(host) + Math.Min(0.6, 0.15 * span);
                     for (int k = 0; k < perEnd; k++)
                     {
-                        // Réparties sur la face extérieure, à ±35° au plus de l'axe.
-                        double spread = perEnd == 1 ? 0 : -35 + 70.0 * k / (perEnd - 1);
-                        Vec3 normal = outward.Yaw(spread);
+                        // Sur la face tournée vers le corps central, de part et d'autre du découpleur (±40°).
+                        double spread = perEnd == 1 ? 0 : -40 + 80.0 * k / (perEnd - 1);
+                        Vec3 normal = toCore.Yaw(spread);
                         Vec3 point = new Vec3(host.Pos.X, y, host.Pos.Z) + normal * (host.Shape.Diameter / 2);
                         CraftPart sep = SurfaceAt(host, b.Separator, point, normal);
-                        Quat upright = Quat.FromYaw(sep.Yaw);
-                        Quat rot = Quat.FromTo(upright.Rotate(sep.Shape.ExhaustDir), exhaust) * upright;
-                        sep.Tilted = rot;
-                        sep.Pos = point - rot.Rotate(sep.Shape.SrfPos);
+                        sep.Tilted = SeparatorRotation(sep, normal, toCore);
+                        sep.Pos = point - sep.Rotation.Rotate(sep.Shape.SrfPos);
                         sep.Activation = activation;
                         all[i].Add(sep);
                     }
@@ -514,6 +511,37 @@ namespace LaunchPlanner
             }
             Notes.Add(string.Format("{0} {1} par booster l'écartent de la fusée au largage.", b.SeparatorsEach, b.Separator.Title));
             return all;
+        }
+
+        /// <summary>
+        /// Orientation d'une fusée de séparation : posée à plat contre le booster comme dans l'éditeur, retournée (tuyère
+        /// vers le haut) puis inclinée de 25° pour que ses gaz partent vers le haut et vers le corps central. La poussée
+        /// freine le booster largué et l'écarte de la fusée.
+        /// </summary>
+        static Quat SeparatorRotation(CraftPart sep, Vec3 normal, Vec3 toCore)
+        {
+            Quat upright = Quat.FromYaw(sep.Yaw);
+            Vec3 exhaust = upright.Rotate(sep.Shape.ExhaustDir);
+            // Tuyère vers le bas en pose normale : on la retourne en tournant autour de la normale (la face d'attache reste contre le booster).
+            Quat flip = exhaust.Y < 0 ? Axis(normal, 180) : new Quat(0, 0, 0, 1);
+            Vec3 tangent = Vec3.Cross(new Vec3(0, 1, 0), normal).Unit;
+            Quat best = flip * upright;
+            double bestScore = double.MinValue;
+            foreach (double angle in new[] { 25.0, -25.0 })
+            {
+                Quat q = Axis(tangent, angle) * flip * upright;
+                Vec3 e = q.Rotate(sep.Shape.ExhaustDir).Unit;
+                double score = Vec3.Dot(e, toCore) + e.Y;
+                if (score > bestScore) { bestScore = score; best = q; }
+            }
+            return best;
+        }
+
+        static Quat Axis(Vec3 axis, double degrees)
+        {
+            Vec3 a = axis.Unit;
+            double h = degrees * Math.PI / 360, sn = Math.Sin(h);
+            return new Quat(a.X * sn, a.Y * sn, a.Z * sn, Math.Cos(h));
         }
 
         /// <summary>
