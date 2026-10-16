@@ -16,6 +16,9 @@ namespace LaunchPlanner
         public bool Solid;
         public bool Crossfeed;          // asparagus: the boosters feed the core and are dropped 2 by 2
         public PartInfo Part;           // solid motor, or engine of a liquid booster
+        public int EnginesEach = 1;     // liquid booster: engines under its tank (a cluster, like Soyuz or Falcon Heavy)
+        public PartInfo Coupler;        // multi-coupler carrying that cluster, or null (engines attached in a ring)
+        public double CouplerMass;
         public string Mixture = "";
         public List<TankUse> Tanks = new List<TankUse>();
         public double Fuel;             // propellant per booster (t)
@@ -29,12 +32,13 @@ namespace LaunchPlanner
 
         public double DryEach
         {
-            get { return Part.DryMassT + (Solid ? 0 : TankDry) + DecouplerMass + NoseMass; }
+            get { return Part.DryMassT * (Solid ? 1 : EnginesEach) + (Solid ? 0 : TankDry + CouplerMass) + DecouplerMass + NoseMass; }
         }
 
         public double FuelEach
         {
-            get { return Solid ? Part.WetMassT - Part.DryMassT : Fuel; }
+            // A liquid booster's engine may carry propellant of its own (engine and tank in one part).
+            get { return Solid ? Part.WetMassT - Part.DryMassT : Fuel + EnginesEach * Math.Max(0, Part.WetMassT - Part.DryMassT); }
         }
     }
 
@@ -67,11 +71,17 @@ namespace LaunchPlanner
             get { return EngineCount * Engine.DryMassT + TankDry + DecouplerMass + CouplerMass; }
         }
 
+        /// <summary>Propellant carried by the engines themselves (engine and tank in one part, such as some Tantares engines).</summary>
+        public double EngineFuel
+        {
+            get { return EngineCount * Math.Max(0, Engine.WetMassT - Engine.DryMassT); }
+        }
+
         public double TotalMass
         {
             get
             {
-                double m = DryMass + Fuel;
+                double m = DryMass + Fuel + EngineFuel;
                 if (Boosters != null) m += Boosters.Count * (Boosters.DryEach + Boosters.FuelEach);
                 return m;
             }
@@ -147,6 +157,7 @@ namespace LaunchPlanner
         const double G0 = PartInfo.G0;
         const int MaxEnginesPerStage = 2;    // upper stages: one vacuum engine (two at most, like Centaur)
         const int MaxLowerEngines = 7;       // first stage (engine cluster)
+        const int MaxBoosterEngines = 4;     // liquid booster (Soyuz: 4 chambers per booster)
         const double MaxTankRatio = 0.2;     // dry mass / propellant mass (about 0.125 for stock tanks)
         const double TankRatioSlack = 1.5;  // tolerance relative to the best tank when choosing parts
 
@@ -227,7 +238,7 @@ namespace LaunchPlanner
             BoosterPlan b = d.Stages.Count > 0 ? d.Stages[0].Boosters : null;
             if (b == null || b.Count == 0) return;
             b.Separator = separator;
-            b.SeparatorsEach = SeparatorCount(separator, b.Part.DryMassT + (b.Solid ? 0 : b.TankDry));
+            b.SeparatorsEach = SeparatorCount(separator, b.Part.DryMassT * (b.Solid ? 1 : b.EnginesEach) + (b.Solid ? 0 : b.TankDry));
             PartInfo top = b.Solid ? b.Part : b.Tanks.Count > 0 ? b.Tanks[0].Tank : null;
             b.NoseCone = top != null && !top.NoseTop && (!heightsKnown || top.HeightM > 0) ? NoseCone(SizeOf(top)) : null;
             b.NoseMass = b.NoseCone != null ? b.NoseCone.DryMassT : 0;
@@ -569,7 +580,7 @@ namespace LaunchPlanner
                 double thrC = mdotC * Isp(s.Engine, atmo) * G0;
                 double liftThrust = s.EngineCount * (i == 0 && req.HomeAtmosphere ? s.Engine.ThrustAslKN : s.Engine.ThrustVacKN);
                 double dv = 0;
-                double coreFuel = s.Fuel;
+                double coreFuel = s.Fuel + s.EngineFuel;
                 s.StartDeltaV = total;
 
                 s.Twr = liftThrust / (s.MassStart * req.HomeGravity);
@@ -577,9 +588,10 @@ namespace LaunchPlanner
                 BoosterPlan b = s.Boosters;
                 if (b != null && b.Count > 0)
                 {
-                    double mdotB = MassFlow(b.Part);
+                    int k = b.Solid ? 1 : b.EnginesEach;   // engines per booster
+                    double mdotB = k * MassFlow(b.Part);
                     double thrB = mdotB * Isp(b.Part, atmo) * G0;
-                    liftThrust += b.Count * (i == 0 && req.HomeAtmosphere ? b.Part.ThrustAslKN : b.Part.ThrustVacKN);
+                    liftThrust += b.Count * k * (i == 0 && req.HomeAtmosphere ? b.Part.ThrustAslKN : b.Part.ThrustVacKN);
                     s.Twr = liftThrust / (s.MassStart * req.HomeGravity);
                     if (b.Crossfeed)
                     {
@@ -604,7 +616,7 @@ namespace LaunchPlanner
                             dv += (thrC + b.Count * thrB) / (mdotC + b.Count * mdotB) * Math.Log(mass / m1);
                             double m2 = m1 - b.Count * (b.FuelEach - mdotB * tC);
                             dv += thrB / mdotB * Math.Log(m1 / m2);
-                            double boosterThrust = b.Count * (atmo ? (b.Part.ThrustAslKN + b.Part.ThrustVacKN) / 2 : b.Part.ThrustVacKN);
+                            double boosterThrust = b.Count * k * (atmo ? (b.Part.ThrustAslKN + b.Part.ThrustVacKN) / 2 : b.Part.ThrustVacKN);
                             s.DeltaV = dv;
                             s.CoreTwr = boosterThrust / (m1 * req.HomeGravity);
                             s.CoreStartDeltaV = total + dv;
@@ -651,7 +663,8 @@ namespace LaunchPlanner
                 BoosterPlan b = s.Boosters;
                 if (b != null)
                 {
-                    double each = b.Part.Cost + (b.Decoupler != null ? b.Decoupler.Cost : 0);
+                    double each = b.Part.Cost * (b.Solid ? 1 : b.EnginesEach) + (b.Decoupler != null ? b.Decoupler.Cost : 0)
+                        + (b.Coupler != null ? b.Coupler.Cost : 0);
                     if (!b.Solid)
                     {
                         if (b.Tanks.Count > 0) foreach (TankUse t in b.Tanks) each += t.Count * t.Tank.Cost;
@@ -693,7 +706,9 @@ namespace LaunchPlanner
                 if (b != null && b.Count > 0)
                 {
                     double core = CraftBuilder.DiameterOf(LargestSize(s.Mixture, s.Size));
-                    double each = CraftBuilder.DiameterOf(SizeOf(b.Part));
+                    double each = CraftBuilder.DiameterOf(b.Solid || b.EnginesEach <= 1 ? SizeOf(b.Part) : ClusterSize(b.Mixture, b.Part, b.EnginesEach));
+                    if (!b.Solid && b.EnginesEach > 1 && each > core + 0.01)
+                        return string.Format("{0} engines do not fit under a booster no wider than the core", b.EnginesEach);
                     if (b.Count * each > Math.PI * (core + each) * 0.95)
                         return string.Format("{0} boosters do not fit around the core", b.Count);
                 }
@@ -790,7 +805,8 @@ namespace LaunchPlanner
             BoosterPlan b = s.Boosters;
             if (b != null && !b.Solid)
             {
-                b.Fuel = fuel / Math.Max(1, s.EngineCount);   // a liquid booster = one core engine and its share of propellant
+                // A liquid booster burns like the core: its share of propellant follows its engine's flow.
+                b.Fuel = fuel * b.EnginesEach * MassFlow(b.Part) / Math.Max(1e-9, s.EngineCount * MassFlow(s.Engine));
                 b.TankDry = b.Fuel * TankRatio(b.Mixture, SizeOf(b.Part));
             }
         }
@@ -917,6 +933,7 @@ namespace LaunchPlanner
                     n.Boosters = new BoosterPlan
                     {
                         Count = b.Count, Solid = b.Solid, Crossfeed = b.Crossfeed, Part = b.Part, Mixture = b.Mixture,
+                        EnginesEach = b.EnginesEach, Coupler = b.Coupler, CouplerMass = b.CouplerMass,
                         Tanks = new List<TankUse>(b.Tanks), Fuel = b.Fuel, TankDry = b.TankDry,
                         Decoupler = b.Decoupler, DecouplerMass = b.DecouplerMass,
                         Separator = b.Separator, SeparatorsEach = b.SeparatorsEach, NoseCone = b.NoseCone, NoseMass = b.NoseMass,
@@ -1102,7 +1119,7 @@ namespace LaunchPlanner
         double LanderDeltaV(StagePlan s, PartInfo legs)
         {
             double dry = req.PayloadMass + s.DryMass + LanderLegs * (legs != null ? legs.DryMassT : 0);
-            return s.Engine.IspVac * G0 * Math.Log((dry + s.Fuel) / dry);
+            return s.Engine.IspVac * G0 * Math.Log((dry + s.Fuel + s.EngineFuel) / dry);
         }
 
         List<LauncherDesign> RunLauncher()
@@ -1218,14 +1235,52 @@ namespace LaunchPlanner
                     continue;
                 }
                 bool asparagus = boosterKind == "asparagus";
-                for (int c = 2; c <= (asparagus ? 6 : 4); c += 2)
-                    best = Better(best, Build(u, e, n, new BoosterPlan
+                // The boosters' engine need not be the core's: a more powerful one lifts more.
+                // Asparagus boosters feed the core, so they burn the same propellants.
+                foreach (PartInfo be in BoosterEngines())
+                {
+                    if (asparagus && engineMixture[be] != engineMixture[e]) continue;
+                    for (int k = 1; k <= MaxBoosterEngines; k++)
                     {
-                        Count = c, Solid = false, Crossfeed = asparagus, Part = e, Mixture = engineMixture[e],
-                        Decoupler = radial, DecouplerMass = radial != null ? radial.DryMassT : 0.025,
-                    }));
+                        if (k > 1 && !ClusterFits(engineMixture[be], be, k)) break;
+                        for (int c = 2; c <= (asparagus ? 6 : 4); c += 2)
+                            best = Better(best, Build(u, e, n, new BoosterPlan
+                            {
+                                Count = c, Solid = false, Crossfeed = asparagus, Part = be, Mixture = engineMixture[be], EnginesEach = k,
+                                Decoupler = radial, DecouplerMass = radial != null ? radial.DryMassT : 0.025,
+                            }));
+                    }
+                }
             }
             return best;
+        }
+
+        List<PartInfo> boosterEngines;
+
+        /// <summary>
+        /// Engines worth trying on liquid boosters: those that no other engine with the same propellants beats
+        /// at once on sea-level thrust, sea-level Isp, thrust-to-weight and diameter (smaller clusters better).
+        /// </summary>
+        List<PartInfo> BoosterEngines()
+        {
+            if (boosterEngines != null) return boosterEngines;
+            boosterEngines = new List<PartInfo>();
+            foreach (PartInfo a in lowerEngines)
+            {
+                bool dominated = false;
+                if (Propellant(a) <= 0)
+                    foreach (PartInfo b in lowerEngines)
+                    {
+                        if (b == a || engineMixture[b] != engineMixture[a] || Propellant(b) > 0) continue;
+                        double ta = a.ThrustAslKN / a.DryMassT, tb = b.ThrustAslKN / b.DryMassT;
+                        double da = CraftBuilder.DiameterOf(SizeOf(a)), db = CraftBuilder.DiameterOf(SizeOf(b));
+                        if (b.ThrustAslKN >= a.ThrustAslKN && b.IspAsl >= a.IspAsl && tb >= ta && db <= da + 0.01 &&
+                            (b.ThrustAslKN > a.ThrustAslKN || b.IspAsl > a.IspAsl || tb > ta || db < da - 0.01)) { dominated = true; break; }
+                    }
+                if (!dominated) boosterEngines.Add(a);
+            }
+            Trace("booster engines " + boosterEngines.Count + " / " + lowerEngines.Count);
+            return boosterEngines;
         }
 
         bool UpperStagesOk(LauncherDesign d)
@@ -1328,6 +1383,13 @@ namespace LaunchPlanner
                     (s.Tanks.Count == 0 || StackSizes(s.Tanks[0].Tank) != 2))
                     d.Notes.Add(string.Format("No {0} → {1} adapter tank unlocked: add a structural adapter between stages {2} and {3}.",
                         Diameter(s.Size), Diameter(d.Stages[i + 1].Size), i + 1, i + 2));
+                BoosterPlan b = s.Boosters;
+                if (b != null && b.Count > 0 && b.NoseCone == null)
+                {
+                    PartInfo top = b.Solid ? b.Part : b.Tanks.Count > 0 ? b.Tanks[0].Tank : null;
+                    if (top != null && !top.NoseTop)
+                        d.Notes.Add(string.Format("No nose cone unlocked at Ø {0} for the boosters: their top stays flat.", Diameter(SizeOf(top))));
+                }
             }
             return d;
         }
@@ -1425,7 +1487,9 @@ namespace LaunchPlanner
             BoosterPlan b = s.Boosters;
             if (b != null && !b.Solid)
             {
-                string bs = ChooseSize(b.Fuel, b.Mixture, b.Part, 1, 0, CraftBuilder.DiameterOf(s.Size));
+                int k = b.EnginesEach;
+                double engD = CraftBuilder.DiameterOf(SizeOf(b.Part));
+                string bs = ChooseSize(b.Fuel, b.Mixture, b.Part, k, 0, CraftBuilder.DiameterOf(s.Size));
                 // A booster taller than the core would stick out below: widen it until it fits.
                 double coreHeight = TanksHeight(s.Tanks) + HeightOf(s.Engine);
                 Mixture bm;
@@ -1434,11 +1498,34 @@ namespace LaunchPlanner
                     {
                         double bd = CraftBuilder.DiameterOf(size);
                         if (bd < CraftBuilder.DiameterOf(bs) - 0.01 || bd > CraftBuilder.DiameterOf(s.Size) + 0.01) continue;
+                        if (ClusterCapacity(bd, engD) < k) continue;
                         double bf, btd;
                         List<TankUse> bt = Fill(b.Fuel, b.Mixture, size, out bf, out btd, true);
                         if (bt.Count > 0 && TanksHeight(bt) + HeightOf(b.Part) <= 0.95 * coreHeight) { bs = size; break; }
                     }
+                // A booster gets a nose cone: if none is unlocked at its diameter, the nearest diameter
+                // that has one and keeps the booster no taller than the core.
+                if (req.NoseCones.Count > 0 && NoseCone(bs) == null && mixtures.TryGetValue(b.Mixture, out bm))
+                {
+                    string coned = null;
+                    double gap = double.MaxValue;
+                    foreach (string size in bm.Sizes)
+                    {
+                        double bd = CraftBuilder.DiameterOf(size);
+                        if (bd > CraftBuilder.DiameterOf(s.Size) + 0.01 || NoseCone(size) == null) continue;
+                        if (ClusterCapacity(bd, engD) < k) continue;
+                        double bf, btd;
+                        List<TankUse> bt = Fill(b.Fuel, b.Mixture, size, out bf, out btd, true);
+                        if (bt.Count == 0 || TankParts(bt) > MaxTankParts) continue;
+                        if (heightsKnown && coreHeight > 0 && TanksHeight(bt) + HeightOf(b.Part) > 0.95 * coreHeight) continue;
+                        double g = Math.Abs(bd - CraftBuilder.DiameterOf(bs));
+                        if (g < gap) { gap = g; coned = size; }
+                    }
+                    if (coned != null) bs = coned;
+                }
                 b.Tanks = Fill(b.Fuel, b.Mixture, bs, out b.Fuel, out b.TankDry, true);
+                b.Coupler = Coupler(bs, b.Part, k);
+                b.CouplerMass = b.Coupler != null ? b.Coupler.DryMassT : 0;
             }
         }
 
@@ -1530,11 +1617,11 @@ namespace LaunchPlanner
                 BoosterPlan b = s.Boosters;
                 if (b != null && b.Count > 0)
                 {
-                    double bh = (b.Solid ? HeightOf(b.Part) : TanksHeight(b.Tanks) + HeightOf(b.Part)) + HeightOf(b.NoseCone);
+                    double bh = (b.Solid ? HeightOf(b.Part) : TanksHeight(b.Tanks) + HeightOf(b.Part) + HeightOf(b.Coupler)) + HeightOf(b.NoseCone);
                     string bs = b.Solid || b.Tanks.Count == 0 ? SizeOf(b.Part) : SizeOf(b.Tanks[0].Tank);
                     boosterTop = Math.Max(boosterTop, bh);   // the boosters are aligned with the bottom of the first stage
                     width = Math.Max(width, dia + 2 * CraftBuilder.DiameterOf(bs) + 0.2);
-                    parts += b.Count * ((b.Solid ? 0 : TankParts(b.Tanks)) + 1 + (b.Decoupler != null ? 1 : 0) + b.SeparatorsEach + (b.Crossfeed ? 1 : 0) + (b.NoseCone != null ? 1 : 0));
+                    parts += b.Count * ((b.Solid ? 0 : TankParts(b.Tanks) + b.EnginesEach - 1 + (b.Coupler != null ? 1 : 0)) + 1 + (b.Decoupler != null ? 1 : 0) + b.SeparatorsEach + (b.Crossfeed ? 1 : 0) + (b.NoseCone != null ? 1 : 0));
                 }
             }
             d.HeightM = Math.Max(height, boosterTop);

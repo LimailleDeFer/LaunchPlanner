@@ -95,6 +95,7 @@ namespace LaunchPlanner
             else
             {
                 result = ConfigNode.Parse(CraftWriter.Write(builder, parts, "Launcher " + design.Variant, GameVersion()).ToText());
+                if (result != null) RememberLauncher(result.GetNodes("PART"));
             }
             if (result == null) return "Cannot read the generated launcher.";
             if (!Save(result)) return "Cannot write the vessel to GameData/LaunchPlanner.";
@@ -120,14 +121,20 @@ namespace LaunchPlanner
         static string AttachUnder(ShipConstruct ship, CraftBuilder builder, List<CraftPart> parts, out ConfigNode result)
         {
             result = null;
+            // A launcher generated earlier is replaced: its parts are left out.
+            HashSet<uint> oldIds = LauncherIds();
+            List<Part> payload = ship.parts.FindAll(x => !oldIds.Contains(x.persistentId));
+            if (payload.Count == 0) payload = ship.parts;
+            HashSet<Part> old = new HashSet<Part>(ship.parts.FindAll(x => !payload.Contains(x)));
             // Free stack node, facing down, the lowest on the vessel.
             Part host = null;
             AttachNode hostNode = null;
             Vector3 hostPoint = Vector3.zero;
-            foreach (Part p in ship.parts)
+            foreach (Part p in payload)
                 foreach (AttachNode n in p.attachNodes)
                 {
-                    if (n == null || n.nodeType != AttachNode.NodeType.Stack || n.attachedPart != null) continue;
+                    if (n == null || n.nodeType != AttachNode.NodeType.Stack) continue;
+                    if (n.attachedPart != null && !old.Contains(n.attachedPart)) continue;
                     Vector3 dir = p.transform.TransformDirection(n.orientation);
                     if (dir.y > -0.5f) continue;
                     Vector3 point = p.transform.TransformPoint(n.position);
@@ -142,9 +149,10 @@ namespace LaunchPlanner
 
             // The payload's stages stay last; the launcher's come before them.
             int payloadStages = 0;
-            foreach (Part p in ship.parts) payloadStages = Math.Max(payloadStages, p.inverseStage + 1);
+            foreach (Part p in payload) payloadStages = Math.Max(payloadStages, p.inverseStage + 1);
 
             ConfigNode shipNode = ship.SaveShip();
+            if (old.Count > 0) RemoveParts(shipNode, old);
             Backup(shipNode);
             ConfigNode launcher = ConfigNode.Parse(CraftWriter.Write(builder, parts, ship.shipName, GameVersion(), offset, payloadStages).ToText());
             if (launcher == null) return "Cannot read the generated launcher.";
@@ -168,8 +176,83 @@ namespace LaunchPlanner
             hostPart.AddValue("link", root.Key);
             hostPart.AddValue("attN", hostNode.id + "," + root.Key);
             foreach (ConfigNode n in launcherParts) shipNode.AddNode(n);
+            RememberLauncher(launcherParts);
             result = shipNode;
             return null;
+        }
+
+        /// <summary>Removes these parts from the saved vessel, with the links and nodes that point to them.</summary>
+        static void RemoveParts(ConfigNode shipNode, HashSet<Part> removed)
+        {
+            HashSet<string> keys = new HashSet<string>();
+            foreach (Part p in removed) keys.Add(Key(p));
+            foreach (ConfigNode n in shipNode.GetNodes("PART"))
+                if (keys.Contains(n.GetValue("part"))) shipNode.RemoveNode(n);
+            foreach (ConfigNode n in shipNode.GetNodes("PART"))
+                foreach (string field in new[] { "link", "attN", "srfN", "sym" })
+                {
+                    string[] values = n.GetValues(field);
+                    n.RemoveValues(field);
+                    foreach (string v in values)
+                    {
+                        string target = field == "link" || field == "sym" ? v : v.Substring(v.IndexOf(',') + 1);
+                        if (!keys.Contains(target.Trim())) n.AddValue(field, v);
+                    }
+                }
+        }
+
+        const int RememberedParts = 20000;
+
+        static string LauncherIdsPath
+        {
+            get { return Path.Combine(KSPUtil.ApplicationRootPath, "GameData/LaunchPlanner/launcher-parts.txt"); }
+        }
+
+        /// <summary>
+        /// Notes the persistent ids of the generated parts: if the vessel is reused as a payload later,
+        /// <see cref="Payload"/> leaves the old launcher out.
+        /// </summary>
+        static void RememberLauncher(ConfigNode[] partNodes)
+        {
+            try
+            {
+                List<string> ids = new List<string>();
+                string path = LauncherIdsPath;
+                if (File.Exists(path)) ids.AddRange(File.ReadAllLines(path));
+                foreach (ConfigNode n in partNodes)
+                {
+                    string id = n.GetValue("persistentId");
+                    if (!string.IsNullOrEmpty(id)) ids.Add(id);
+                }
+                if (ids.Count > RememberedParts) ids.RemoveRange(0, ids.Count - RememberedParts);
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                File.WriteAllLines(path, ids.ToArray());
+            }
+            catch (Exception e)
+            {
+                Debug.LogException(e);
+            }
+        }
+
+        /// <summary>Persistent ids of the parts of launchers built so far.</summary>
+        public static HashSet<uint> LauncherIds()
+        {
+            HashSet<uint> ids = new HashSet<uint>();
+            try
+            {
+                string path = LauncherIdsPath;
+                if (!File.Exists(path)) return ids;
+                foreach (string line in File.ReadAllLines(path))
+                {
+                    uint id;
+                    if (uint.TryParse(line.Trim(), out id)) ids.Add(id);
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogException(e);
+            }
+            return ids;
         }
 
         /// <summary>Copy of the vessel before the launcher is added, to go back (the "Before launcher" vessel of the save).</summary>

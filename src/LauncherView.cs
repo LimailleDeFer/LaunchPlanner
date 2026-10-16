@@ -331,7 +331,8 @@ namespace LaunchPlanner
                 {
                     string how = b.Solid ? "solid" : b.Crossfeed ? "liquid asparagus, dropped 2 by 2" : "liquid";
                     Label(string.Format("  <b>+ {0} {1} boosters</b>, each:", b.Count, how));
-                    Label("    1 × " + b.Part.Title);
+                    Label("    " + (b.Solid ? 1 : b.EnginesEach) + " × " + b.Part.Title);
+                    if (b.Coupler != null) Label("    1 × " + b.Coupler.Title);
                     if (!b.Solid) foreach (TankUse t in b.Tanks) Label("    " + t.Count + " × " + t.Tank.Title);
                     if (b.Decoupler != null) Label("    1 × " + b.Decoupler.Title);
                     if (b.Separator != null && b.SeparatorsEach > 0) Label("    " + b.SeparatorsEach + " × " + b.Separator.Title);

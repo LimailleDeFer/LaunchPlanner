@@ -140,6 +140,9 @@ namespace LaunchPlanner
             }
             GUILayout.Label(string.Format("{0}: {1} parts, {2:0.00} t total of which {3:0.00} t dry",
                 payload.Name.Length > 0 ? payload.Name : "Unnamed", payload.PartCount, payload.MassT, payload.DryMassT));
+            if (payload.OldLauncherParts > 0)
+                GUILayout.Label(string.Format("<color=#ffbf33>The {0} parts of a launcher built earlier are left out: it will be replaced.</color>",
+                    payload.OldLauncherParts), rich);
 
             GUILayout.BeginHorizontal();
             string auto = payload.DeltaVKnown ? payload.DeltaVVac.ToString("0") + " m/s (game calculation, in vacuum)" : "not available";

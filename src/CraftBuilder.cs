@@ -347,17 +347,26 @@ namespace LaunchPlanner
         /// <summary>Engines under the last tank: one at the center on the node, the others in a ring attached to the surface.</summary>
         List<CraftPart> AddEngines(CraftPart tank, StagePlan s, int n, int ignition)
         {
+            if (tank.Info == s.Engine) { tank.Activation = ignition; return new List<CraftPart> { tank }; }
+            return AddEngines(tank, s.Engine, n, s.Coupler, ignition, true);
+        }
+
+        /// <summary>
+        /// Engines under a tank. Without <paramref name="symmetry"/> the ring is not linked in symmetry (each booster's
+        /// engines are paired with the same engine of the other boosters instead).
+        /// </summary>
+        List<CraftPart> AddEngines(CraftPart tank, PartInfo engine, int n, PartInfo couplerInfo, int ignition, bool symmetry)
+        {
             List<CraftPart> engines = new List<CraftPart>();
-            if (tank.Info == s.Engine) { tank.Activation = ignition; engines.Add(tank); }
             if (n <= 0) return engines;
-            if (s.Coupler != null && tank.Info != s.Engine)
+            if (couplerInfo != null)
             {
-                CraftPart coupler = StackBelow(tank, s.Coupler);
+                CraftPart coupler = StackBelow(tank, couplerInfo);
                 if (coupler.Shape.OutputNodes.Count == n)
                 {
                     for (int j = 0; j < n; j++)
                     {
-                        CraftPart e = Make(s.Engine);
+                        CraftPart e = Make(engine);
                         Vec3 node = coupler.Shape.OutputPos[j].Yaw(coupler.Yaw);
                         double top = e.Shape.TopNode != null ? e.Shape.TopY : e.Shape.Height / 2;
                         e.Pos = new Vec3(coupler.Pos.X + node.X, coupler.Pos.Y + node.Y - top, coupler.Pos.Z + node.Z);
@@ -368,7 +377,7 @@ namespace LaunchPlanner
                         e.Activation = ignition;
                         engines.Add(e);
                     }
-                    Notes.Add(string.Format("The {0} {1} engines are mounted under a {2}.", n, s.Engine.Title, s.Coupler.Title));
+                    if (symmetry) Notes.Add(string.Format("The {0} {1} engines are mounted under a {2}.", n, engine.Title, couplerInfo.Title));
                     return engines;
                 }
                 // The model does not match what the inventory announced: fall back to the surface-attached cluster.
@@ -379,14 +388,14 @@ namespace LaunchPlanner
             bool center = n == 1 || n >= 5;
             if (center)
             {
-                CraftPart e = StackBelow(tank, s.Engine);
+                CraftPart e = StackBelow(tank, engine);
                 e.Activation = ignition;
                 engines.Add(e);
             }
             int ring = center ? n - 1 : n;
             if (ring == 0) return engines;
 
-            PartShape es = shapes.Get(s.Engine);
+            PartShape es = shapes.Get(engine);
             double tankR = tank.Shape.Diameter / 2, engR = es.Diameter / 2;
             double radius = Math.Max(tankR - engR, engR / Math.Sin(Math.PI / Math.Max(2, ring)));
             if (center) radius = Math.Max(radius, 2 * engR);
@@ -395,7 +404,7 @@ namespace LaunchPlanner
             for (int j = 0; j < ring; j++)
             {
                 double angle = 360.0 * j / ring;
-                CraftPart e = Make(s.Engine);
+                CraftPart e = Make(engine);
                 double top = e.Shape.TopNode != null ? e.Shape.TopY : e.Shape.Height / 2;
                 e.Pos = new Vec3(tank.Pos.X, y - top, tank.Pos.Z) + new Vec3(0, 0, radius).Yaw(angle);
                 Link(e, tank, AttachKind.Surface);
@@ -404,9 +413,9 @@ namespace LaunchPlanner
                 group.Add(e);
                 engines.Add(e);
             }
-            SetSymmetry(group);
-            if (s.EngineCount > 1) Notes.Add(string.Format("The {0} {1} engines are attached in a cluster under the tank; a multi-coupler " +
-                "(bi, tri or quad) gives a cleaner mounting.", s.EngineCount, s.Engine.Title));
+            if (symmetry) SetSymmetry(group);
+            if (n > 1 && symmetry) Notes.Add(string.Format("The {0} {1} engines are attached in a cluster under the tank; a multi-coupler " +
+                "(bi, tri or quad) gives a cleaner mounting.", n, engine.Title));
             return engines;
         }
 
@@ -428,11 +437,13 @@ namespace LaunchPlanner
 
             // Parts of a booster, top to bottom: a solid motor alone, or tanks then engine.
             List<PartInfo> stack = new List<PartInfo>();
+            bool cluster = !b.Solid && (b.EnginesEach > 1 || b.Coupler != null);
             if (b.Solid) stack.Add(b.Part);
             else
             {
                 foreach (TankUse t in b.Tanks) for (int n = 0; n < t.Count; n++) stack.Add(t.Tank);
                 stack.Add(b.Part);
+                if (b.Coupler != null) stack.Add(b.Coupler);   // only for the height: the coupler sits above the engines
             }
             // Height of the attach point so the bottom of the booster lines up with the bottom of the core.
             PartShape topShape = shapes.Get(stack[0]);
@@ -472,15 +483,25 @@ namespace LaunchPlanner
                     mount = dec;
                     point = point + outward * decThickness;
                 }
+                int stacked = cluster ? stack.Count - (b.Coupler != null ? 2 : 1) : stack.Count;
                 CraftPart cur = SurfaceAt(mount, stack[0], point, outward);
                 mine.Add(cur);
-                for (int j = 1; j < stack.Count; j++)
+                for (int j = 1; j < stacked; j++)
                 {
                     cur = StackBelow(cur, stack[j]);
                     mine.Add(cur);
                 }
+                if (cluster)
+                {
+                    // Several engines under the booster's last tank: on a multi-coupler, or in a ring.
+                    CraftPart last = cur;
+                    List<CraftPart> engines = AddEngines(last, b.Part, b.EnginesEach, b.Coupler, 0, false);
+                    CraftPart coupler = last.Children.Find(c => b.Coupler != null && c.Info == b.Coupler);
+                    if (coupler != null) mine.Add(coupler);
+                    mine.AddRange(engines);
+                }
                 // The last element is the engine (or solid motor): it ignites at liftoff.
-                cur.Activation = 0;
+                else cur.Activation = 0;
                 perBooster.Add(mine);
                 CraftPart top = mine[b.Decoupler != null ? 1 : 0];
                 if (b.NoseCone != null && top.Shape.TopNode != null && top.Shape.BottomNode != null) cones.Add(StackAbove(top, b.NoseCone));
@@ -542,7 +563,8 @@ namespace LaunchPlanner
                 List<CraftPart> mine = perBooster[i];
                 CraftPart topPart = mine[first];
                 // At the bottom: the last tank (liquid booster) or the solid motor itself.
-                CraftPart bottomPart = b.Solid ? mine[mine.Count - 1] : mine[Math.Max(first, mine.Count - 2)];
+                CraftPart bottomPart = b.Solid ? mine[mine.Count - 1]
+                    : mine.FindLast(p => b.Tanks.Exists(t => t.Tank == p.Info)) ?? mine[Math.Max(first, mine.Count - 2)];
                 int activation = mine[0].Activation;
                 Vec3 outward = new Vec3(mine[first].Pos.X - core.Pos.X, 0, mine[first].Pos.Z - core.Pos.Z).Unit;
                 Vec3 toCore = outward * -1;

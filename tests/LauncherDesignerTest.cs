@@ -84,6 +84,8 @@ static class LauncherDesignerTest
             PayloadMass = args.Length > 1 ? D(args[1]) : 5,
             TargetDeltaV = args.Length > 2 ? D(args[2]) : 4500,
         };
+        string twr = Environment.GetEnvironmentVariable("TWR");
+        if (!string.IsNullOrEmpty(twr)) req.MinLiftoffTwr = D(twr);
         // LIMITS=height,width,parts,mass (0 = no limit), like the VAB and launch pad in career
         string limits = Environment.GetEnvironmentVariable("LIMITS");
         if (!string.IsNullOrEmpty(limits))
@@ -102,7 +104,9 @@ static class LauncherDesignerTest
             req.Legs.Add(new PartInfo { Name = "landingLeg1-2", Title = "LT-2", DryMassT = 0.1, Unlocked = true, Cost = 640 });
         }
         // Fake nose cones and multi-couplers (they are not in the CSV inventory), like the stock ones.
-        foreach (string size in new[] { "size0", "size1", "size1p5", "size2", "size3" })
+        // CONES=size1,size2: only these cone sizes are unlocked
+        string cones = Environment.GetEnvironmentVariable("CONES");
+        foreach (string size in string.IsNullOrEmpty(cones) ? new[] { "size0", "size1", "size1p5", "size2", "size3" } : cones.Split(','))
             req.NoseCones.Add(new PartInfo { Name = "fakeCone" + size, Title = "Cone " + size, Sizes = size, Kind = PartKind.Tank, Unlocked = true, DryMassT = 0.03 * CraftBuilder.DiameterOf(size), Cost = 300 });
         if (Environment.GetEnvironmentVariable("NOCOUPLERS") == null)
             foreach (string size in new[] { "size1", "size2", "size3" })
@@ -137,8 +141,9 @@ static class LauncherDesignerTest
                 Console.WriteLine("   Stage {0} (Ø {6}): {1} × {2}; {3}; Δv {4:0}, TWR {5:0.00}", i + 1, s.EngineCount, s.Engine.Title, Tanks(s.Tanks), s.DeltaV, s.Twr, LauncherDesigner.Diameter(s.Size));
                 if (s.Coupler != null) Console.WriteLine("      under a " + s.Coupler.Title);
                 if (s.Boosters != null)
-                    Console.WriteLine("      + {0} × {1}{2}{3}", s.Boosters.Count, s.Boosters.Part.Title, s.Boosters.Solid ? "" : " with " + Tanks(s.Boosters.Tanks),
-                        s.Boosters.NoseCone != null ? ", " + s.Boosters.NoseCone.Title : "");
+                    Console.WriteLine("      + {0} × {4}{1}{2}{3}", s.Boosters.Count, s.Boosters.Part.Title, s.Boosters.Solid ? "" : " with " + Tanks(s.Boosters.Tanks),
+                        s.Boosters.NoseCone != null ? ", " + s.Boosters.NoseCone.Title : "",
+                        s.Boosters.EnginesEach > 1 ? "(" + s.Boosters.EnginesEach + " engines" + (s.Boosters.Coupler != null ? " under " + s.Boosters.Coupler.Title : "") + ") " : "");
             }
             foreach (string n in d.Notes) Console.WriteLine("   note: " + n);
             if (d.Valid && d.DeltaV < req.TargetDeltaV - 1) bad++;

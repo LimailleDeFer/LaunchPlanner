@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace LaunchPlanner
@@ -15,6 +16,7 @@ namespace LaunchPlanner
         public double DryMassT;
         public double DeltaVVac;
         public bool DeltaVKnown;
+        public int OldLauncherParts;   // parts of a launcher generated earlier, left out of the payload
 
         public static Payload FromEditor()
         {
@@ -25,18 +27,51 @@ namespace LaunchPlanner
 
             p.Present = true;
             p.Name = ship.shipName ?? "";
-            p.PartCount = ship.parts.Count;
-            try
+
+            // A launcher generated earlier and still attached is not part of the payload.
+            HashSet<uint> launcher = CraftSpawner.LauncherIds();
+            List<Part> mine = ship.parts.FindAll(x => !launcher.Contains(x.persistentId));
+            p.OldLauncherParts = ship.parts.Count - mine.Count;
+            if (mine.Count == 0) { mine = ship.parts; p.OldLauncherParts = 0; }
+            p.PartCount = mine.Count;
+
+            if (p.OldLauncherParts == 0)
             {
-                Vector3 size = ShipConstruction.CalculateCraftSize(ship);
-                p.HeightM = size.y;
-                p.WidthM = Math.Max(size.x, size.z);
+                try
+                {
+                    Vector3 size = ShipConstruction.CalculateCraftSize(ship);
+                    p.HeightM = size.y;
+                    p.WidthM = Math.Max(size.x, size.z);
+                }
+                catch (Exception) { }
+                float dry, fuel;
+                ship.GetShipMass(out dry, out fuel);
+                p.DryMassT = dry;
+                p.MassT = dry + fuel;
             }
-            catch (Exception) { }
-            float dry, fuel;
-            ship.GetShipMass(out dry, out fuel);
-            p.DryMassT = dry;
-            p.MassT = dry + fuel;
+            else
+            {
+                Bounds? box = null;
+                foreach (Part x in mine)
+                {
+                    p.DryMassT += x.mass;
+                    p.MassT += x.mass + x.GetResourceMass();
+                    try
+                    {
+                        Bounds b = PartGeometryUtil.GetPartRendererBound(x);
+                        if (box == null) box = b;
+                        else { Bounds u = box.Value; u.Encapsulate(b); box = u; }
+                    }
+                    catch (Exception) { }
+                }
+                if (box != null)
+                {
+                    p.HeightM = box.Value.size.y;
+                    p.WidthM = Math.Max(box.Value.size.x, box.Value.size.z);
+                }
+                // The game's delta-v covers the whole vessel, old launcher included: not usable.
+                return p;
+            }
 
             // Delta-v computed by the game (KSP's delta-v app), in vacuum.
             VesselDeltaV dv = ship.vesselDeltaV;
