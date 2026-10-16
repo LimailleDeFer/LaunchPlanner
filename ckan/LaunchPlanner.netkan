@@ -1,0 +1,18 @@
+{
+    "spec_version": "v1.4",
+    "identifier": "LaunchPlanner",
+    "name": "LaunchPlanner",
+    "abstract": "Designs a launcher in the VAB for your payload and mission (delta-v budget, stages, engines, boosters) using only unlocked parts, stock or modded.",
+    "author": "LimailleDeFer",
+    "license": "MIT",
+    "$kref": "#/ckan/github/LimailleDeFer/Mods-ksp-create-ship",
+    "$vref": "#/ckan/ksp-avc",
+    "tags": [ "plugin", "editor", "information" ],
+    "resources": {
+        "repository": "https://github.com/LimailleDeFer/Mods-ksp-create-ship",
+        "bugtracker": "https://github.com/LimailleDeFer/Mods-ksp-create-ship/issues"
+    },
+    "install": [
+        { "find": "LaunchPlanner", "install_to": "GameData" }
+    ]
+}

@@ -37,5 +37,6 @@ mcs -nologo -target:library -optimize -sdk:4.5 -out:"$MOD/Plugins/LaunchPlanner.
   src/*.cs
 
 cp README.md "$MOD/LISEZMOI.md"
+cp LaunchPlanner.version LICENSE "$MOD/"
 (cd "$OUT" && rm -f LaunchPlanner.zip && zip -qr LaunchPlanner.zip GameData)
 echo "OK : $MOD/Plugins/LaunchPlanner.dll et $OUT/LaunchPlanner.zip"
