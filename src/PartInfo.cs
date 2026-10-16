@@ -24,6 +24,13 @@ namespace LaunchPlanner
         public string Category = "";  // catégorie de l'éditeur (Coupling pour les découpleurs)
         public double HeightM;        // distance entre les nœuds d'empilement du haut et du bas (0 si inconnue)
         public double DiameterM;      // largeur réelle du modèle 3D (0 si inconnue)
+        public bool NoseTop;          // le haut du modèle se termine en pointe (réservoir à nez, propulseur à coiffe) : rien ne s'empile dessus
+
+        // Coupleurs multiples (bi, tri, quadri) : un nœud en haut, plusieurs en bas
+        public int StackOutputs;
+        public double TopDiameterM;
+        public double OutputDiameterM;
+        public double OutputSpacingM;  // plus petite distance entre deux nœuds du bas
         public bool Unlocked;
         public PartKind Kind;
         public double Cost;

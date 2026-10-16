@@ -137,11 +137,14 @@ namespace LaunchPlanner
                 req.AscentDeltaV = MissionBudget.Ascent(home);
             }
             SiteLimits.Apply(req);
+            req.NoseCones = StructuralParts.NoseCones();
+            req.Couplers = StructuralParts.MultiCouplers();
             if (!manualMass && mission.Payload.Present)
             {
                 req.PayloadHeight = mission.Payload.HeightM;
                 req.PayloadWidth = mission.Payload.WidthM;
                 req.PayloadParts = mission.Payload.PartCount;
+                req.PayloadBottomSize = StructuralParts.PayloadBottomSize();
             }
             Budget budget = mission.Current;
             if (budget != null && budget.LanderDeltaV > 0)
@@ -321,6 +324,7 @@ namespace LaunchPlanner
                 Label(string.Format("<b>{0}</b> : {1:0.0} t · coût {2} · Δv {3:0} m/s · TWR {4:0.00}", name, s.TotalMass, Money(s.Cost), s.DeltaV, s.Twr));
                 Label("  Ø " + LauncherDesigner.Diameter(s.Size) + " · " + s.EngineCount + " × " + s.Engine.Title);
                 foreach (TankUse t in s.Tanks) Label("  " + t.Count + " × " + t.Tank.Title);
+                if (s.Coupler != null) Label("  1 × " + s.Coupler.Title);
                 if (s.Decoupler != null) Label("  1 × " + s.Decoupler.Title);
                 BoosterPlan b = s.Boosters;
                 if (b != null && b.Count > 0)
@@ -331,6 +335,7 @@ namespace LaunchPlanner
                     if (!b.Solid) foreach (TankUse t in b.Tanks) Label("    " + t.Count + " × " + t.Tank.Title);
                     if (b.Decoupler != null) Label("    1 × " + b.Decoupler.Title);
                     if (b.Separator != null && b.SeparatorsEach > 0) Label("    " + b.SeparatorsEach + " × " + b.Separator.Title);
+                    if (b.NoseCone != null) Label("    1 × " + b.NoseCone.Title);
                 }
             }
 

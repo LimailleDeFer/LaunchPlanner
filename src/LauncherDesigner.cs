@@ -24,10 +24,12 @@ namespace LaunchPlanner
         public double DecouplerMass;
         public PartInfo Separator;      // fusée de séparation (Sepratron) qui écarte le booster largué
         public int SeparatorsEach;      // nombre par booster, selon sa masse à vide
+        public PartInfo NoseCone;       // cône de nez sur le haut du booster
+        public double NoseMass;
 
         public double DryEach
         {
-            get { return Part.DryMassT + (Solid ? 0 : TankDry) + DecouplerMass; }
+            get { return Part.DryMassT + (Solid ? 0 : TankDry) + DecouplerMass + NoseMass; }
         }
 
         public double FuelEach
@@ -48,6 +50,8 @@ namespace LaunchPlanner
         public PartInfo Decoupler;      // découpleur sous l'étage (aucun pour le premier étage)
         public double DecouplerMass;
         public BoosterPlan Boosters;
+        public PartInfo Coupler;        // coupleur multiple sous le réservoir, qui porte la grappe de moteurs
+        public double CouplerMass;
 
         // Résultats de la simulation
         public double DeltaV;
@@ -60,7 +64,7 @@ namespace LaunchPlanner
 
         public double DryMass
         {
-            get { return EngineCount * Engine.DryMassT + TankDry + DecouplerMass; }
+            get { return EngineCount * Engine.DryMassT + TankDry + DecouplerMass + CouplerMass; }
         }
 
         public double TotalMass
@@ -127,6 +131,10 @@ namespace LaunchPlanner
         public double LanderTwr = 2;    // TWR minimal face à cette gravité
         public string LanderBody = "";
         public List<PartInfo> Legs = new List<PartInfo>();   // jambes d'atterrissage débloquées
+
+        public List<PartInfo> NoseCones = new List<PartInfo>();   // cônes de nez débloqués (haut des boosters)
+        public List<PartInfo> Couplers = new List<PartInfo>();    // coupleurs multiples débloqués (grappes de moteurs)
+        public string PayloadBottomSize = "";                     // profil du nœud du bas de la charge utile ("" = inconnu)
     }
 
     /// <summary>
@@ -214,12 +222,42 @@ namespace LaunchPlanner
             return Math.Min(8, n);
         }
 
-        void AssignSeparators(LauncherDesign d)
+        void AssignBoosterParts(LauncherDesign d)
         {
             BoosterPlan b = d.Stages.Count > 0 ? d.Stages[0].Boosters : null;
             if (b == null || b.Count == 0) return;
             b.Separator = separator;
             b.SeparatorsEach = SeparatorCount(separator, b.Part.DryMassT + (b.Solid ? 0 : b.TankDry));
+            PartInfo top = b.Solid ? b.Part : b.Tanks.Count > 0 ? b.Tanks[0].Tank : null;
+            b.NoseCone = top != null && !top.NoseTop && (!heightsKnown || top.HeightM > 0) ? NoseCone(SizeOf(top)) : null;
+            b.NoseMass = b.NoseCone != null ? b.NoseCone.DryMassT : 0;
+        }
+
+        /// <summary>Cône de nez à la taille du haut du booster : le plus léger, comme ceux des vrais boosters.</summary>
+        PartInfo NoseCone(string size)
+        {
+            PartInfo best = null;
+            foreach (PartInfo c in req.NoseCones)
+                if (HasSize(c, size) && (best == null || c.DryMassT < best.DryMassT)) best = c;
+            return best;
+        }
+
+        /// <summary>
+        /// Coupleur multiple qui porte exactement cette grappe sous un réservoir de ce diamètre : nœud du haut à la taille du
+        /// réservoir, nœuds du bas assez écartés pour les moteurs. Le plus léger s'il y en a plusieurs.
+        /// </summary>
+        PartInfo Coupler(string size, PartInfo engine, int count)
+        {
+            if (count < 2) return null;
+            double tankD = CraftBuilder.DiameterOf(size), engineD = CraftBuilder.DiameterOf(SizeOf(engine));
+            PartInfo best = null;
+            foreach (PartInfo c in req.Couplers)
+            {
+                if (c.StackOutputs != count || Math.Abs(c.TopDiameterM - tankD) > 0.01) continue;
+                if (c.OutputSpacingM < 0.9 * engineD) continue;
+                if (best == null || c.DryMassT < best.DryMassT) best = c;
+            }
+            return best;
         }
 
         // ---------- Préparation des pièces ----------
@@ -459,6 +497,19 @@ namespace LaunchPlanner
             if (!string.IsNullOrEmpty(p.Category)) return p.Category == "Coupling";
             string t = (p.Title + " " + p.Name).ToLowerInvariant();
             return t.Contains("decoupl") || t.Contains("découpl") || t.Contains("separator") || t.Contains("séparateur") || t.Contains("interstage");
+        }
+
+        /// <summary>
+        /// Découpleur sous la charge utile : à la taille de son nœud du bas quand on la connaît (pas avec un atterrisseur,
+        /// où il se place sous l'atterrisseur), sinon à la taille du dernier étage.
+        /// </summary>
+        PartInfo PayloadDecoupler(string stageSize)
+        {
+            string size = req.PayloadBottomSize;
+            if (string.IsNullOrEmpty(size) || req.LanderDeltaV > 0) return StackDecoupler(stageSize);
+            foreach (PartInfo d in decouplers)
+                if (HasSize(d, size)) return StackDecoupler(size);
+            return StackDecoupler(stageSize);
         }
 
         PartInfo StackDecoupler(string size)
@@ -868,6 +919,7 @@ namespace LaunchPlanner
                         Count = b.Count, Solid = b.Solid, Crossfeed = b.Crossfeed, Part = b.Part, Mixture = b.Mixture,
                         Tanks = new List<TankUse>(b.Tanks), Fuel = b.Fuel, TankDry = b.TankDry,
                         Decoupler = b.Decoupler, DecouplerMass = b.DecouplerMass,
+                        Separator = b.Separator, SeparatorsEach = b.SeparatorsEach, NoseCone = b.NoseCone, NoseMass = b.NoseMass,
                     };
                 }
                 c.Stages.Add(n);
@@ -1235,13 +1287,17 @@ namespace LaunchPlanner
                     d.Stages[i].Fuel = fuels[i];
                     Quantize(d, i);
                 }
-                d.PayloadDecoupler = StackDecoupler(d.Stages[d.Stages.Count - 1].Size);
+                d.PayloadDecoupler = PayloadDecoupler(d.Stages[d.Stages.Count - 1].Size);
                 SolveFirstStage(d);
                 double wanted = first.Fuel;
+                first.Coupler = Coupler(first.Size, first.Engine, first.EngineCount);
+                first.CouplerMass = first.Coupler != null ? first.Coupler.DryMassT : 0;
                 for (int attempt = 0; attempt < 12; attempt++)
                 {
                     SetFuel(first, wanted);
                     Quantize(d, 0);
+                    first.Coupler = Coupler(first.Size, first.Engine, first.EngineCount);
+                    first.CouplerMass = first.Coupler != null ? first.Coupler.DryMassT : 0;
                     double dv = Simulate(d);
                     if (dv >= req.TargetDeltaV) break;
                     wanted = Math.Max(wanted * 1.03, first.Fuel * (1 + (req.TargetDeltaV - dv) / req.TargetDeltaV));
@@ -1265,7 +1321,7 @@ namespace LaunchPlanner
                 StagePlan s = d.Stages[i];
                 if (s.Decoupler == null && s != first)
                     d.Notes.Add("Aucun découpleur débloqué à la bonne taille.");
-                if (s.EngineCount > 1 && ClusterCapacity(CraftBuilder.DiameterOf(s.Size), CraftBuilder.DiameterOf(SizeOf(s.Engine))) < s.EngineCount)
+                if (s.EngineCount > 1 && s.Coupler == null && ClusterCapacity(CraftBuilder.DiameterOf(s.Size), CraftBuilder.DiameterOf(SizeOf(s.Engine))) < s.EngineCount)
                     d.Notes.Add(string.Format("Étage {0} : {1} moteurs se chevauchent sous un réservoir de {2} (pas de réservoir débloqué plus large).",
                         i + 1, s.EngineCount, Diameter(s.Size)));
                 if (i + 1 < d.Stages.Count && s.Size != d.Stages[i + 1].Size &&
@@ -1284,8 +1340,38 @@ namespace LaunchPlanner
             int count = 0;
             foreach (KeyValuePair<string, int> r in rejections)
                 if (r.Value > count) { count = r.Value; main = r.Key; }
-            return "Aucune combinaison de pièces débloquées n'atteint le Δv demandé" +
+            string text = "Aucune combinaison de pièces débloquées n'atteint le Δv demandé" +
                 (main != null ? " ; le plus souvent : " + main + "." : " avec un TWR suffisant.");
+            // Sans boosters, la poussée au décollage est plafonnée par le nombre de moteurs qui tiennent sous le plus large réservoir.
+            if (main == "TWR au décollage trop faible" && (variant == "SSTO" || variant == "Deux étages"))
+            {
+                PartInfo engine;
+                int engines;
+                double thrust = MaxCoreThrust(out engine, out engines);
+                if (engine != null)
+                    text += string.Format(" Sans boosters, la poussée au décollage plafonne à {0:0} kN ({1} × {2} sous le plus large réservoir débloqué, Ø {3}), " +
+                        "soit au plus {4:0} t au décollage : il faut des boosters, ou débloquer des réservoirs plus larges.",
+                        thrust, engines, engine.Title, Diameter(LargestSize(engineMixture[engine], SizeOf(engine))),
+                        thrust / (req.HomeGravity * req.MinLiftoffTwr));
+            }
+            return text;
+        }
+
+        /// <summary>Plus forte poussée au sol d'un premier étage sans boosters : moteur × nombre qui tient sous le plus large réservoir.</summary>
+        double MaxCoreThrust(out PartInfo engine, out int count)
+        {
+            engine = null;
+            count = 0;
+            double best = 0;
+            foreach (PartInfo e in lowerEngines)
+                for (int n = MaxLowerEngines; n >= 1; n--)
+                {
+                    if (n > 1 && !ClusterFits(engineMixture[e], e, n)) continue;
+                    double t = n * (req.HomeAtmosphere ? e.ThrustAslKN : e.ThrustVacKN);
+                    if (t > best) { best = t; engine = e; count = n; }
+                    break;
+                }
+            return best;
         }
 
         public static string Diameter(string size)
@@ -1427,7 +1513,7 @@ namespace LaunchPlanner
         /// <summary>Hauteur, largeur et nombre de pièces du lanceur assemblé, charge utile comprise.</summary>
         void Measure(LauncherDesign d)
         {
-            AssignSeparators(d);
+            AssignBoosterParts(d);
             double height = req.PayloadHeight + HeightOf(d.PayloadDecoupler);
             double width = req.PayloadWidth;
             int parts = req.PayloadParts + (d.PayloadDecoupler != null ? 1 : 0);
@@ -1435,20 +1521,20 @@ namespace LaunchPlanner
             for (int i = 0; i < d.Stages.Count; i++)
             {
                 StagePlan s = d.Stages[i];
-                double stage = TanksHeight(s.Tanks) + HeightOf(s.Engine);
+                double stage = TanksHeight(s.Tanks) + HeightOf(s.Engine) + HeightOf(s.Coupler);
                 if (i > 0 && s.Decoupler != null) stage += HeightOf(s.Decoupler);
                 height += stage;
-                parts += TankParts(s.Tanks) + s.EngineCount + (i > 0 && s.Decoupler != null ? 1 : 0);
+                parts += TankParts(s.Tanks) + s.EngineCount + (i > 0 && s.Decoupler != null ? 1 : 0) + (s.Coupler != null ? 1 : 0);
                 double dia = CraftBuilder.DiameterOf(s.Size);
                 width = Math.Max(width, dia);
                 BoosterPlan b = s.Boosters;
                 if (b != null && b.Count > 0)
                 {
-                    double bh = b.Solid ? HeightOf(b.Part) : TanksHeight(b.Tanks) + HeightOf(b.Part);
+                    double bh = (b.Solid ? HeightOf(b.Part) : TanksHeight(b.Tanks) + HeightOf(b.Part)) + HeightOf(b.NoseCone);
                     string bs = b.Solid || b.Tanks.Count == 0 ? SizeOf(b.Part) : SizeOf(b.Tanks[0].Tank);
                     boosterTop = Math.Max(boosterTop, bh);   // les boosters sont alignés sur le bas du premier étage
                     width = Math.Max(width, dia + 2 * CraftBuilder.DiameterOf(bs) + 0.2);
-                    parts += b.Count * ((b.Solid ? 0 : TankParts(b.Tanks)) + 1 + (b.Decoupler != null ? 1 : 0) + b.SeparatorsEach + (b.Crossfeed ? 1 : 0));
+                    parts += b.Count * ((b.Solid ? 0 : TankParts(b.Tanks)) + 1 + (b.Decoupler != null ? 1 : 0) + b.SeparatorsEach + (b.Crossfeed ? 1 : 0) + (b.NoseCone != null ? 1 : 0));
                 }
             }
             d.HeightM = Math.Max(height, boosterTop);
@@ -1523,10 +1609,12 @@ namespace LaunchPlanner
             int bestCount = 0;
             foreach (PartInfo main in tanks)
             {
+                // Un réservoir à nez ne se pose qu'en haut d'un booster, seul : jamais sous une autre pièce.
+                if (main.NoseTop && !uniform) continue;
                 double p = Propellant(main);
                 int whole = (int)Math.Floor(fuel / p + 1e-9);
                 if (whole > 200) continue;
-                for (int n = Math.Max(whole, 1); n <= whole + 1; n++)
+                for (int n = Math.Max(whole, 1); n <= (main.NoseTop ? 1 : whole + 1); n++)
                 {
                     double rest = fuel - n * p;
                     PartInfo cover = null;
@@ -1534,7 +1622,7 @@ namespace LaunchPlanner
                     {
                         if (uniform) continue;
                         // Le plus petit réservoir qui couvre le reste.
-                        foreach (PartInfo t in tanks) if (Propellant(t) >= rest - 1e-9) cover = t;
+                        foreach (PartInfo t in tanks) if (!t.NoseTop && Propellant(t) >= rest - 1e-9) cover = t;
                         if (cover == null) continue;
                     }
                     double got = n * p + (cover != null ? Propellant(cover) : 0);

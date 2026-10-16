@@ -39,6 +39,7 @@ static class LauncherDesignerTest
             };
             if (col.ContainsKey("categorie")) p.Category = c[col["categorie"]];
             if (col.ContainsKey("diametre_m") && c[col["diametre_m"]].Length > 0) p.DiameterM = double.Parse(c[col["diametre_m"]], CultureInfo.InvariantCulture);
+            if (col.ContainsKey("nez")) p.NoseTop = c[col["nez"]] == "oui";
             if (col.ContainsKey("hauteur_m") && c[col["hauteur_m"]].Length > 0) p.HeightM = double.Parse(c[col["hauteur_m"]], CultureInfo.InvariantCulture);
             foreach (string r in c[col["ressources"]].Split(' '))
             {
@@ -88,6 +89,18 @@ static class LauncherDesignerTest
             req.Legs.Add(new PartInfo { Name = "landingLeg1", Title = "LT-1", DryMassT = 0.05, Unlocked = true, Cost = 440 });
             req.Legs.Add(new PartInfo { Name = "landingLeg1-2", Title = "LT-2", DryMassT = 0.1, Unlocked = true, Cost = 640 });
         }
+        // Cônes de nez et coupleurs multiples factices (ils ne sont pas dans l'inventaire CSV), comme ceux du jeu de base.
+        foreach (string size in new[] { "size0", "size1", "size1p5", "size2", "size3" })
+            req.NoseCones.Add(new PartInfo { Name = "fakeCone" + size, Title = "Cône " + size, Sizes = size, Kind = PartKind.Tank, Unlocked = true, DryMassT = 0.03 * CraftBuilder.DiameterOf(size), Cost = 300 });
+        if (Environment.GetEnvironmentVariable("NOCOUPLERS") == null)
+            foreach (string size in new[] { "size1", "size2", "size3" })
+                for (int n = 2; n <= 4; n++)
+                {
+                    double d = CraftBuilder.DiameterOf(size);
+                    req.Couplers.Add(new PartInfo { Name = "fakeCoupler" + n + size, Title = "Coupleur ×" + n + " " + size, Sizes = size, Kind = PartKind.Tank,
+                        Unlocked = true, DryMassT = 0.1 * d, Cost = 500, StackOutputs = n, TopDiameterM = d, OutputDiameterM = d / 2,
+                        OutputSpacingM = n == 2 ? d / 2 : d * 0.55, HeightM = 0.4 });
+                }
         Stopwatch sw = Stopwatch.StartNew();
         LauncherDesigner.Log = m => Console.Error.WriteLine(sw.ElapsedMilliseconds + " ms " + m);
         LauncherDesigner designer = new LauncherDesigner(req);
@@ -110,8 +123,10 @@ static class LauncherDesignerTest
             {
                 StagePlan s = d.Stages[i];
                 Console.WriteLine("   Étage {0} (Ø {6}) : {1} × {2} ; {3} ; Δv {4:0}, TWR {5:0.00}", i + 1, s.EngineCount, s.Engine.Title, Tanks(s.Tanks), s.DeltaV, s.Twr, LauncherDesigner.Diameter(s.Size));
+                if (s.Coupler != null) Console.WriteLine("      sous un " + s.Coupler.Title);
                 if (s.Boosters != null)
-                    Console.WriteLine("      + {0} × {1}{2}", s.Boosters.Count, s.Boosters.Part.Title, s.Boosters.Solid ? "" : " avec " + Tanks(s.Boosters.Tanks));
+                    Console.WriteLine("      + {0} × {1}{2}{3}", s.Boosters.Count, s.Boosters.Part.Title, s.Boosters.Solid ? "" : " avec " + Tanks(s.Boosters.Tanks),
+                        s.Boosters.NoseCone != null ? ", " + s.Boosters.NoseCone.Title : "");
             }
             foreach (string n in d.Notes) Console.WriteLine("   note : " + n);
             if (d.Valid && d.DeltaV < req.TargetDeltaV - 1) bad++;
@@ -160,7 +175,15 @@ class FakeShapes : IPartShapes
         double d = CraftBuilder.DiameterOf(LauncherDesigner.SizeOf(p));
         double h = p.Kind == PartKind.Decoupler ? 0.2 : p.Kind == PartKind.Engine ? 1.5
             : Math.Max(0.3, (p.WetMassT - p.DryMassT) / 1.0 / (Math.PI * d * d / 4));
+        if (p.Name.StartsWith("fakeCone")) h = d;
+        if (p.StackOutputs > 0) h = p.HeightM;
         PartShape s = new PartShape { Diameter = d, TopNode = "top", BottomNode = "bottom", TopY = h / 2, BottomY = -h / 2 };
+        if (p.Name.StartsWith("fakeCone")) { s.TopNode = "bottom"; s.BottomNode = null; s.TopY = -h / 2; }
+        for (int i = 0; i < p.StackOutputs; i++)
+        {
+            s.OutputNodes.Add("bottom" + (i + 1));
+            s.OutputPos.Add(new Vec3(0, -h / 2, p.OutputSpacingM / (2 * Math.Sin(Math.PI / p.StackOutputs))).Yaw(360.0 * i / p.StackOutputs));
+        }
         s.SrfPos = new Vec3(0, 0, p.Kind == PartKind.Decoupler ? 0.1 : -d / 2);
         s.SrfDir = new Vec3(0, 0, p.Kind == PartKind.Decoupler ? -1 : 1);
         s.Modules.Add("ModulePartVariants"); s.ModuleIds.Add("");

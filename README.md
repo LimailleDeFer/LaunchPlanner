@@ -59,7 +59,11 @@ Le budget est une estimation par transferts de Hohmann, proche de la carte Δv c
 
 Détails du montage :
 - les réservoirs commutables (B9PartSwitch, CryoTanks) sont réglés sur le bon contenu ;
-- au-delà d'un moteur par étage, les moteurs sont fixés en grappe sous le réservoir ;
+- au-delà d'un moteur par étage, les moteurs du premier étage sont montés sous un coupleur multiple débloqué
+  (bi, tri ou quadri) à la taille du réservoir ; sans coupleur qui convient, ils sont fixés en grappe sous le réservoir ;
+- chaque booster est coiffé d'un cône de nez débloqué à sa taille, sauf si son réservoir (ou son propulseur) a déjà
+  une pointe ; un réservoir à nez n'est jamais empilé sous une autre pièce ;
+- le découpleur sous la charge utile prend la taille de son nœud du bas ;
 - en asperges, des conduites de carburant (FTX-2, si débloquées) relient chaque paire de boosters à la suivante,
   puis la dernière au corps central ; sinon le transfert passe par les découpleurs radiaux ;
 - chaque booster porte des fusées de séparation (Sepratron I, ou la plus proche débloquée), moitié en haut, moitié

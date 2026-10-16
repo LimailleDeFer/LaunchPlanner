@@ -27,6 +27,15 @@ namespace LaunchPlanner
                     if (n.position.y < bottom) { bottom = n.position.y; shape.BottomNode = n.id; }
                 }
                 if (shape.TopNode == shape.BottomNode) shape.BottomNode = null;   // un seul nœud : il sert de nœud du haut
+                // Coupleur multiple : plusieurs nœuds au même niveau en bas.
+                foreach (AttachNode n in prefab.attachNodes)
+                {
+                    if (n == null || n.nodeType != AttachNode.NodeType.Stack || n.id == shape.TopNode) continue;
+                    if (Math.Abs(n.position.y - bottom) > 0.05 || n.orientation.y > -0.5f) continue;
+                    shape.OutputNodes.Add(n.id);
+                    shape.OutputPos.Add(new Vec3(n.position.x, n.position.y, n.position.z));
+                }
+                if (shape.OutputNodes.Count < 2) { shape.OutputNodes.Clear(); shape.OutputPos.Clear(); }
                 shape.TopY = shape.TopNode != null ? top : 0;
                 shape.BottomY = shape.BottomNode != null ? bottom : 0;
                 if (prefab.srfAttachNode != null)

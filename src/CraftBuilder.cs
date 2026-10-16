@@ -15,6 +15,8 @@ namespace LaunchPlanner
         public List<string> Modules = new List<string>();      // noms des modules, dans l'ordre du modèle
         public List<string> ModuleIds = new List<string>();    // moduleID (B9PartSwitch), "" sinon
         public Vec3 ExhaustDir = new Vec3(0, -1, 0);           // sortie des gaz d'un moteur, dans le repère de la pièce
+        public List<string> OutputNodes = new List<string>();  // coupleur multiple : nœuds du bas
+        public List<Vec3> OutputPos = new List<Vec3>();
 
         public double Height { get { return TopNode != null && BottomNode != null ? TopY - BottomY : Diameter; } }
     }
@@ -206,6 +208,21 @@ namespace LaunchPlanner
             return c;
         }
 
+        /// <summary>Pose `child` sur `parent` (nœud du haut du parent contre nœud du bas de l'enfant, ou son seul nœud).</summary>
+        CraftPart StackAbove(CraftPart parent, PartInfo info)
+        {
+            CraftPart c = Make(info);
+            double parentTop = parent.Shape.TopNode != null ? parent.Shape.TopY : parent.Shape.Height / 2;
+            string node = c.Shape.BottomNode ?? c.Shape.TopNode;
+            double childBottom = c.Shape.BottomNode != null ? c.Shape.BottomY : c.Shape.TopNode != null ? c.Shape.TopY : -c.Shape.Height / 2;
+            c.Pos = new Vec3(parent.Pos.X, parent.Pos.Y + parentTop - childBottom, parent.Pos.Z);
+            c.Yaw = parent.Yaw;
+            Link(c, parent, AttachKind.Stack);
+            c.SelfNode = node ?? "bottom";
+            c.ParentNode = parent.Shape.TopNode ?? "top";
+            return c;
+        }
+
         static double Bottom(CraftPart p) { return p.Pos.Y + (p.Shape.BottomNode != null ? p.Shape.BottomY : -p.Shape.Height / 2); }
         static double Top(CraftPart p) { return p.Pos.Y + (p.Shape.TopNode != null ? p.Shape.TopY : p.Shape.Height / 2); }
 
@@ -333,6 +350,31 @@ namespace LaunchPlanner
             List<CraftPart> engines = new List<CraftPart>();
             if (tank.Info == s.Engine) { tank.Activation = ignition; engines.Add(tank); }
             if (n <= 0) return engines;
+            if (s.Coupler != null && tank.Info != s.Engine)
+            {
+                CraftPart coupler = StackBelow(tank, s.Coupler);
+                if (coupler.Shape.OutputNodes.Count == n)
+                {
+                    for (int j = 0; j < n; j++)
+                    {
+                        CraftPart e = Make(s.Engine);
+                        Vec3 node = coupler.Shape.OutputPos[j].Yaw(coupler.Yaw);
+                        double top = e.Shape.TopNode != null ? e.Shape.TopY : e.Shape.Height / 2;
+                        e.Pos = new Vec3(coupler.Pos.X + node.X, coupler.Pos.Y + node.Y - top, coupler.Pos.Z + node.Z);
+                        e.Yaw = coupler.Yaw;
+                        Link(e, coupler, AttachKind.Stack);
+                        e.SelfNode = e.Shape.TopNode ?? "top";
+                        e.ParentNode = coupler.Shape.OutputNodes[j];
+                        e.Activation = ignition;
+                        engines.Add(e);
+                    }
+                    Notes.Add(string.Format("Les {0} moteurs de {1} sont montés sous un {2}.", n, s.Engine.Title, s.Coupler.Title));
+                    return engines;
+                }
+                // Le modèle ne correspond pas à ce que l'inventaire annonçait : on revient à la grappe fixée en surface.
+                parts.Remove(coupler);
+                tank.Children.Remove(coupler);
+            }
 
             bool center = n == 1 || n >= 5;
             if (center)
@@ -411,6 +453,7 @@ namespace LaunchPlanner
             double coreR = host.Shape.Diameter / 2;
 
             List<List<CraftPart>> perBooster = new List<List<CraftPart>>();
+            List<CraftPart> cones = new List<CraftPart>();
             for (int i = 0; i < b.Count; i++)
             {
                 double angle = 360.0 * i / b.Count;
@@ -439,6 +482,19 @@ namespace LaunchPlanner
                 // Le dernier élément est le moteur (ou le propulseur à poudre) : il s'allume au décollage.
                 cur.Activation = 0;
                 perBooster.Add(mine);
+                CraftPart top = mine[b.Decoupler != null ? 1 : 0];
+                if (b.NoseCone != null && top.Shape.TopNode != null && top.Shape.BottomNode != null) cones.Add(StackAbove(top, b.NoseCone));
+            }
+            if (cones.Count > 0)
+            {
+                if (b.Crossfeed)
+                    for (int g = 0; g < b.Count / 2; g++)
+                    {
+                        List<CraftPart> pair = new List<CraftPart>();
+                        for (int i = g; i < cones.Count; i += b.Count / 2) pair.Add(cones[i]);
+                        SetSymmetry(pair);
+                    }
+                else SetSymmetry(cones);
             }
             List<List<CraftPart>> separators = AddSeparators(perBooster, b, host);
 

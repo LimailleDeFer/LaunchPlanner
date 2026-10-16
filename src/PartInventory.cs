@@ -131,6 +131,7 @@ namespace LaunchPlanner
                         Category = baseInfo.Category,
                         HeightM = baseInfo.HeightM,
                         DiameterM = baseInfo.DiameterM,
+                        NoseTop = baseInfo.NoseTop,
                         Cost = baseInfo.Cost,
                         Kind = PartKind.Tank,
                         DryMassT = baseInfo.DryMassT + ToDouble(Refl.Call(module, "GetDryMass", subtype)),
@@ -245,6 +246,7 @@ namespace LaunchPlanner
                 info.Propellants = string.Join(" + ", names.ToArray());
                 // Propulseur à poudre : poussée non réglable et carburant embarqué.
                 info.Kind = solid && best.throttleLocked && info.WetMassT > info.DryMassT ? PartKind.Booster : PartKind.Engine;
+                if (info.Kind == PartKind.Booster) info.NoseTop = PointedTop(prefab);
                 return info;
             }
 
@@ -258,7 +260,59 @@ namespace LaunchPlanner
             if (HasModule(prefab, CommandModules)) return null;
 
             info.Kind = PartKind.Tank;
+            info.NoseTop = PointedTop(prefab);
             return info;
+        }
+
+        // Modèle désactivé (variante non choisie d'une pièce commutable) : le prefab lui-même est inactif, on regarde en dessous.
+        static bool Hidden(Transform t, Transform root)
+        {
+            for (; t != null && t != root; t = t.parent)
+                if (!t.gameObject.activeSelf) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Le modèle se termine-t-il en pointe ? Vrai si le haut du modèle dépasse nettement le nœud du haut (ou s'il n'y a pas
+        /// de nœud du haut), ou si sa tranche supérieure est bien plus étroite que le reste (réservoir à nez, comme ceux de Proton).
+        /// </summary>
+        public static bool PointedTop(Part prefab)
+        {
+            try
+            {
+                Matrix4x4 toPart = prefab.transform.worldToLocalMatrix;
+                List<Vector3> points = new List<Vector3>();
+                foreach (MeshFilter mf in prefab.GetComponentsInChildren<MeshFilter>(true))
+                {
+                    if (mf.sharedMesh == null || !mf.sharedMesh.isReadable || Hidden(mf.transform, prefab.transform)) continue;
+                    Matrix4x4 m = toPart * mf.transform.localToWorldMatrix;
+                    foreach (Vector3 v in mf.sharedMesh.vertices) points.Add(m.MultiplyPoint3x4(v));
+                }
+                if (points.Count < 8) return false;
+                float minY = float.MaxValue, maxY = float.MinValue, maxR = 0;
+                foreach (Vector3 v in points)
+                {
+                    minY = Math.Min(minY, v.y);
+                    maxY = Math.Max(maxY, v.y);
+                    maxR = Math.Max(maxR, new Vector2(v.x, v.z).magnitude);
+                }
+                if (maxR <= 0 || maxY <= minY) return false;
+
+                double topNode = double.MinValue;
+                int stack = 0;
+                foreach (AttachNode n in prefab.attachNodes)
+                    if (n != null && n.nodeType == AttachNode.NodeType.Stack) { stack++; topNode = Math.Max(topNode, n.position.y); }
+                if (stack >= 2 && maxY > topNode + 0.6 * maxR) return true;
+
+                float band = maxY - 0.1f * (maxY - minY), topR = 0;
+                foreach (Vector3 v in points)
+                    if (v.y >= band) topR = Math.Max(topR, new Vector2(v.x, v.z).magnitude);
+                return topR < 0.55f * maxR;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         static bool HasModule(object prefab, HashSet<string> classNames)
@@ -332,7 +386,7 @@ namespace LaunchPlanner
             string path = Path.Combine(directory, "inventaire.csv");
             CultureInfo ci = CultureInfo.InvariantCulture;
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine("type;nom;variante;titre;source;tailles;tech;debloquee;cout;masse_seche_t;masse_pleine_t;poussee_vide_kN;poussee_sol_kN;isp_vide_s;isp_sol_s;ergols;ressources;categorie;hauteur_m;diametre_m");
+            sb.AppendLine("type;nom;variante;titre;source;tailles;tech;debloquee;cout;masse_seche_t;masse_pleine_t;poussee_vide_kN;poussee_sol_kN;isp_vide_s;isp_sol_s;ergols;ressources;categorie;hauteur_m;diametre_m;nez");
             foreach (PartInfo p in Parts)
             {
                 List<string> res = new List<string>();
@@ -343,7 +397,7 @@ namespace LaunchPlanner
                     p.Cost.ToString("0", ci), p.DryMassT.ToString("0.###", ci), p.WetMassT.ToString("0.###", ci),
                     p.ThrustVacKN.ToString("0.#", ci), p.ThrustAslKN.ToString("0.#", ci),
                     p.IspVac.ToString("0", ci), p.IspAsl.ToString("0", ci), p.Propellants, string.Join(" ", res.ToArray()), p.Category,
-                    p.HeightM.ToString("0.###", ci), p.DiameterM.ToString("0.###", ci),
+                    p.HeightM.ToString("0.###", ci), p.DiameterM.ToString("0.###", ci), p.NoseTop ? "oui" : "non",
                 }));
             }
             File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
