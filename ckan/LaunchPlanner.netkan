@@ -5,12 +5,12 @@
     "abstract": "Launcher planner for KSP 1.12.5: designs a launcher (stages, engines, fuel, boosters) from your payload and mission goal, using only unlocked parts including those from other mods, and builds it in the VAB under your payload.",
     "author": "LimailleDeFer",
     "license": "MIT",
-    "$kref": "#/ckan/github/LimailleDeFer/Mods-ksp-create-ship",
+    "$kref": "#/ckan/github/LimailleDeFer/LaunchPlanner",
     "$vref": "#/ckan/ksp-avc",
     "tags": [ "plugin", "editor", "information" ],
     "resources": {
-        "repository": "https://github.com/LimailleDeFer/Mods-ksp-create-ship",
-        "bugtracker": "https://github.com/LimailleDeFer/Mods-ksp-create-ship/issues"
+        "repository": "https://github.com/LimailleDeFer/LaunchPlanner",
+        "bugtracker": "https://github.com/LimailleDeFer/LaunchPlanner/issues"
     },
     "install": [
         { "find": "LaunchPlanner", "install_to": "GameData" }
