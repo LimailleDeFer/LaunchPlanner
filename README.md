@@ -1,8 +1,8 @@
 # LaunchPlanner: launcher planner for KSP 1.12.5
 
-A mod for Kerbal Space Program 1.12.5 (with or without Making History and Breaking Ground) that proposes a launcher
-configuration (stages, engines, fuel, boosters) based on your payload and mission goal, using only unlocked parts,
-including those from other mods.
+A mod for Kerbal Space Program 1.12.5 (with or without Making History and Breaking Ground) that designs a launcher
+based on your payload and mission goal (stages, engines, fuel, boosters), using only unlocked parts, including those
+from other mods, and then builds it in the VAB under your payload.
 
 ## Progress
 
