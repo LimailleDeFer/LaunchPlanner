@@ -1271,7 +1271,9 @@ namespace LaunchPlanner
             }
         }
         const int UppersPerCore = 3;
-        const double MinCoreTwr = 0.5;   // below this, even with boosters the core could not keep up
+        // Core alone at liftoff, carrying the whole stage's propellant: with boosters it carries much less.
+        // Heavy payloads need low values here (the boosters do the lifting), below this the core could not keep up.
+        const double MinCoreTwr = 0.25;
 
         // Best pairs (upper stage, first stage) ignoring liftoff TWR:
         // the boosters are precisely there to fix it.
@@ -1294,6 +1296,9 @@ namespace LaunchPlanner
                             if (d.Stages.Count == 0 || !UpperStagesOk(d)) continue;
                             best = Better(best, d);
                             if (d.Stages[0].DeltaV < MinFirstStageShare * req.TargetDeltaV || d.Stages[0].Twr < MinCoreTwr) continue;
+                            // A cluster that cannot be mounted would only be rejected later, with every booster tried on it:
+                            // it would take the place of a core that can be built.
+                            if (n > 1 && !ClusterFits(engineMixture[e], e, n)) continue;
                             // A few upper stages per first-stage engine, to keep varied cores.
                             Core same = cores.Find(c => c.Engine == e && c.Count == n);
                             if (same == null) cores.Add(same = new Core { Engine = e, Count = n });
