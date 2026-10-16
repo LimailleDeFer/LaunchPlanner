@@ -112,7 +112,8 @@ namespace LaunchPlanner
 
         // Estimated size, payload included
         public double HeightM;
-        public double BoosterExcessM;   // how much the boosters rise above the core's first stage (0 if they are shorter)
+        public double BoosterExcessM;
+        public double HeightOfBoostersM;   // how much the boosters rise above the core's first stage (0 if they are shorter)
         public double WidthM;
         public int PartCount;
     }
@@ -161,9 +162,11 @@ namespace LaunchPlanner
         const double G0 = PartInfo.G0;
         const int MaxEnginesPerStage = 2;    // upper stages: one vacuum engine (two at most, like Centaur)
         const int MaxLowerEngines = 7;       // first stage (engine cluster)
-        const int MaxBoosterEngines = 4;
+        const int MaxBoosterEngines = 7;   // liquid booster cluster: as many as fit under its tank
         // Liquid boosters burning as long as the core, or shorter ones that are dropped earlier (they must stay below its top).
-        static readonly double[] BoosterShares = { 1.0, 0.6 };     // liquid booster (Soyuz: 4 chambers per booster)
+        static readonly double[] BoosterShares = { 1.0 };   // then adjusted per design in Finish when the boosters stand too tall
+        static readonly int[] BoosterCounts = { 2, 3, 4, 6, 8 };
+        static readonly int[] AsparagusCounts = { 2, 4, 6, 8 };   // dropped in pairs     // liquid booster (Soyuz: 4 chambers per booster)
         const double MaxTankRatio = 0.2;     // dry mass / propellant mass (about 0.125 for stock tanks)
         const double TankRatioSlack = 1.5;  // tolerance relative to the best tank when choosing parts
 
@@ -1310,7 +1313,7 @@ namespace LaunchPlanner
                 if (boosterKind == "solid")
                 {
                     foreach (PartInfo srb in solidBoosters)
-                        for (int c = 2; c <= 4; c += 2)   // like Ariane 5, Atlas V, H-IIA: 2 or 4 boosters
+                        foreach (int c in BoosterCounts)
                             best = Better(best, Build(u, e, n, new BoosterPlan
                             {
                                 Count = c, Solid = true, Part = srb, Decoupler = radial,
@@ -1324,16 +1327,26 @@ namespace LaunchPlanner
                 foreach (PartInfo be in BoosterEngines())
                 {
                     if (asparagus && engineMixture[be] != engineMixture[e]) continue;
+                    // Booster count × engines each: once some total works, far bigger totals only add mass.
+                    int firstValid = 1000;   // no valid total yet
                     for (int k = 1; k <= MaxBoosterEngines; k++)
                     {
                         if (k > 1 && !ClusterFits(engineMixture[be], be, k)) break;
-                        for (int c = 2; c <= (asparagus ? 6 : 4); c += 2)
-                        foreach (double share in BoosterShares)
-                            best = Better(best, Build(u, e, n, new BoosterPlan
+                        if (k > 2 * firstValid) break;
+                        foreach (int c in asparagus ? AsparagusCounts : BoosterCounts)
+                        {
+                            if (c * k > 2 * firstValid) break;
+                            foreach (double share in BoosterShares)
                             {
-                                Count = c, Solid = false, Crossfeed = asparagus, Part = be, Mixture = engineMixture[be], EnginesEach = k, Share = share,
-                                Decoupler = radial, DecouplerMass = radial != null ? radial.DryMassT : 0.025,
-                            }));
+                                LauncherDesign d = Build(u, e, n, new BoosterPlan
+                                {
+                                    Count = c, Solid = false, Crossfeed = asparagus, Part = be, Mixture = engineMixture[be], EnginesEach = k, Share = share,
+                                    Decoupler = radial, DecouplerMass = radial != null ? radial.DryMassT : 0.025,
+                                });
+                                if (d.Stages.Count > 0 && ConstraintProblem(d) == null) firstValid = Math.Min(firstValid, c * k);
+                                best = Better(best, d);
+                            }
+                        }
                     }
                 }
             }
@@ -1401,6 +1414,18 @@ namespace LaunchPlanner
             foreach (LauncherDesign candidate in pool)
             {
                 LauncherDesign d = Quantized(Clone(candidate), variant, description);
+                // Boosters standing above the core: give them less propellant (dropped earlier) until they fit.
+                BoosterPlan cb = candidate.Stages[0].Boosters;
+                for (int attempt = 0; attempt < 5 && !d.Valid && d.BoosterExcessM > 0.1 && cb != null && !cb.Solid; attempt++)
+                {
+                    LauncherDesign retry = Clone(candidate);
+                    BoosterPlan rb = retry.Stages[0].Boosters;
+                    double tall = d.HeightOfBoostersM > 0 ? d.HeightOfBoostersM : 1;
+                    rb.Share = cb.Share * Math.Max(0.2, Math.Min(0.9, (tall - d.BoosterExcessM - 0.3) / tall));
+                    cb = rb;
+                    if (!SolveFirstStage(retry)) break;
+                    d = Quantized(retry, variant, description);
+                }
                 Trace(string.Format("  {0:0.0} t {1}×{2} +{3} {4} → {5}", candidate.TotalMass, candidate.Stages[0].EngineCount, candidate.Stages[0].Engine.Name,
                     candidate.Stages[0].Boosters != null ? candidate.Stages[0].Boosters.Count + "×" + candidate.Stages[0].Boosters.Part.Name : "-",
                     candidate.Stages[1 % candidate.Stages.Count].Engine.Name, d.Valid ? "ok" : d.Problem));
@@ -1720,7 +1745,7 @@ namespace LaunchPlanner
                     foreach (PartInfo a in b.NoseAdapters) bh += HeightOf(a);
                     string bs = b.Solid || b.Tanks.Count == 0 ? SizeOf(b.Part) : SizeOf(b.Tanks[0].Tank);
                     boosterTop = Math.Max(boosterTop, bh);   // the boosters are aligned with the bottom of the first stage
-                    if (i == 0) d.BoosterExcessM = Math.Max(0, bh - stage);
+                    if (i == 0) { d.BoosterExcessM = Math.Max(0, bh - stage); d.HeightOfBoostersM = bh; }
                     width = Math.Max(width, dia + 2 * CraftBuilder.DiameterOf(bs) + 0.2);
                     parts += b.Count * ((b.Solid ? 0 : TankParts(b.Tanks) + b.EnginesEach - 1 + (b.Coupler != null ? 1 : 0)) + 1 + (b.Decoupler != null ? 1 : 0) + b.SeparatorsEach + (b.Crossfeed ? 1 : 0) + (b.NoseCone != null ? 1 : 0) + b.NoseAdapters.Count);
                 }
