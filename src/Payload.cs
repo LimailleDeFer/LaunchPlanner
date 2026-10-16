@@ -16,7 +16,9 @@ namespace LaunchPlanner
         public double DryMassT;
         public double DeltaVVac;
         public bool DeltaVKnown;
-        public int OldLauncherParts;   // parts of a launcher generated earlier, left out of the payload
+        public int OldLauncherParts;
+        public double TorqueKNm;       // its own reaction wheels
+        public double RcsKN;           // its own RCS: thrust of all nozzles together   // parts of a launcher generated earlier, left out of the payload
 
         public static Payload FromEditor()
         {
@@ -34,6 +36,16 @@ namespace LaunchPlanner
             p.OldLauncherParts = ship.parts.Count - mine.Count;
             if (mine.Count == 0) { mine = ship.parts; p.OldLauncherParts = 0; }
             p.PartCount = mine.Count;
+            foreach (Part x in mine)
+                foreach (PartModule m in x.Modules)
+                {
+                    ModuleReactionWheel w = m as ModuleReactionWheel;
+                    if (w != null) p.TorqueKNm += Math.Min(w.PitchTorque, w.YawTorque);
+                    ModuleRCS r = m as ModuleRCS;
+                    if (r != null && !r.isJustForShow)
+                        p.RcsKN += r.thrusterPower * Math.Max(1, r.thrusterTransforms != null && r.thrusterTransforms.Count > 0
+                            ? r.thrusterTransforms.Count : x.FindModelTransforms(r.thrusterTransformName).Length);
+                }
 
             if (p.OldLauncherParts == 0)
             {

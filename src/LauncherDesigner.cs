@@ -44,6 +44,53 @@ namespace LaunchPlanner
         }
     }
 
+    /// <summary>
+    /// Attitude control of a stage: reaction wheels and a monopropellant tank stacked between two of its tanks,
+    /// near its center of mass, and RCS thrusters in two rings (top and bottom of its tanks).
+    /// </summary>
+    public class AttitudePlan
+    {
+        public PartInfo Wheel;
+        public int Wheels;
+        public int Joint;               // number of tank parts above the stacked group (0 = above the first tank)
+        public PartInfo MonoTank;       // monopropellant for the RCS, stacked with the wheels, or radial
+        public int MonoTanks;
+        public bool MonoRadial;         // radial tanks at the height of the center of mass, one per ring position
+        public PartInfo Rcs;
+        public int RcsPerRing;
+        public int Rings;
+        public double RingAngle;        // heading of the first thruster of a ring (between the boosters)
+        public double TorqueKNm;        // wheels
+        public double NeededTorqueKNm;
+        public double MonoT;            // monopropellant carried (t)
+
+        public double Mass
+        {
+            get
+            {
+                return (Wheel != null ? Wheels * Wheel.DryMassT : 0) + (MonoTank != null ? MonoTanks * MonoTank.WetMassT : 0)
+                    + (Rcs != null ? Rings * RcsPerRing * Rcs.DryMassT : 0);
+            }
+        }
+
+        public double Cost
+        {
+            get
+            {
+                return (Wheel != null ? Wheels * Wheel.Cost : 0) + (MonoTank != null ? MonoTanks * MonoTank.Cost : 0)
+                    + (Rcs != null ? Rings * RcsPerRing * Rcs.Cost : 0);
+            }
+        }
+
+        /// <summary>Height added to the stage's stack.</summary>
+        public double StackHeight;
+
+        public int Parts
+        {
+            get { return (Wheel != null ? Wheels : 0) + (MonoTank != null ? MonoTanks : 0) + (Rcs != null ? Rings * RcsPerRing : 0); }
+        }
+    }
+
     public class StagePlan
     {
         public PartInfo Engine;
@@ -58,6 +105,7 @@ namespace LaunchPlanner
         public BoosterPlan Boosters;
         public PartInfo Coupler;        // multi-coupler under the tank, carrying the engine cluster
         public double CouplerMass;
+        public AttitudePlan Attitude;   // reaction wheels and RCS, chosen once the tanks are real
 
         // Simulation results
         public double DeltaV;
@@ -70,7 +118,7 @@ namespace LaunchPlanner
 
         public double DryMass
         {
-            get { return EngineCount * Engine.DryMassT + TankDry + DecouplerMass + CouplerMass; }
+            get { return EngineCount * Engine.DryMassT + TankDry + DecouplerMass + CouplerMass + (Attitude != null ? Attitude.Mass : 0); }
         }
 
         /// <summary>Propellant carried by the engines themselves (engine and tank in one part, such as some Tantares engines).</summary>
@@ -149,6 +197,10 @@ namespace LaunchPlanner
         public List<PartInfo> NoseCones = new List<PartInfo>();   // unlocked nose cones (top of boosters)
         public List<PartInfo> Adapters = new List<PartInfo>();    // unlocked structural adapters (narrow top), to reach a cone's size
         public List<PartInfo> Couplers = new List<PartInfo>();    // unlocked multi-couplers (engine clusters)
+        public List<PartInfo> ReactionWheels = new List<PartInfo>();   // unlocked inline reaction wheels (TorqueKNm, two stack nodes)
+        public List<PartInfo> RcsThrusters = new List<PartInfo>();     // unlocked monopropellant RCS thrusters (surface attach)
+        public double PayloadTorqueKNm;  // reaction wheels already in the payload (probe cores, pods...)
+        public double PayloadRcsKN;      // RCS already in the payload: thrust of all its nozzles together
         public string PayloadBottomSize = "";                     // profile of the payload's bottom node ("" = unknown)
     }
 
@@ -738,6 +790,7 @@ namespace LaunchPlanner
                 if (s.Tanks.Count > 0) foreach (TankUse t in s.Tanks) cost += t.Count * t.Tank.Cost;
                 else cost += s.Fuel * TankCostPerTonne(s.Mixture, s.Size);
                 if (s.Decoupler != null) cost += s.Decoupler.Cost;
+                if (s.Attitude != null) cost += s.Attitude.Cost;
                 BoosterPlan b = s.Boosters;
                 if (b != null)
                 {
@@ -1454,11 +1507,26 @@ namespace LaunchPlanner
                 // Top to bottom: each stage is at least as wide as the one it carries.
                 for (int i = d.Stages.Count - 1; i >= 1; i--)
                 {
-                    d.Stages[i].Fuel = fuels[i];
+                    StagePlan u = d.Stages[i];
+                    u.Fuel = fuels[i];
                     Quantize(d, i);
+                    if (u.Attitude != null && u.Attitude.Mass > 0)
+                    {
+                        // The wheels and RCS weigh on the stage: more propellant keeps its delta-v (same mass ratio).
+                        double end = req.PayloadMass + (d.Lander != null ? d.Lander.TotalMass : 0) + u.DryMass;
+                        for (int j = i + 1; j < d.Stages.Count; j++) end += d.Stages[j].TotalMass;
+                        u.Fuel = fuels[i] * (1 + u.Attitude.Mass / Math.Max(1, end - u.Attitude.Mass));
+                        Quantize(d, i);
+                    }
                 }
                 d.PayloadDecoupler = PayloadDecoupler(d.Stages[d.Stages.Count - 1].Size);
                 SolveFirstStage(d);
+                // The first stage's wheels and RCS depend on its tanks: place them once, then solve again with their mass.
+                if (req.ReactionWheels.Count > 0 || req.RcsThrusters.Count > 0)
+                {
+                    Quantize(d, 0);
+                    if (first.Attitude != null) SolveFirstStage(d);
+                }
                 double wanted = first.Fuel;
                 first.Coupler = Coupler(first.Size, first.Engine, first.EngineCount);
                 first.CouplerMass = first.Coupler != null ? first.Coupler.DryMassT : 0;
@@ -1470,7 +1538,7 @@ namespace LaunchPlanner
                     first.CouplerMass = first.Coupler != null ? first.Coupler.DryMassT : 0;
                     double dv = Simulate(d);
                     if (dv >= req.TargetDeltaV) break;
-                    wanted = Math.Max(wanted * 1.03, first.Fuel * (1 + (req.TargetDeltaV - dv) / req.TargetDeltaV));
+                    wanted = Math.Max(wanted * 1.01, first.Fuel * (1 + (req.TargetDeltaV - dv) / req.TargetDeltaV));
                 }
                 Measure(d);
                 if (req.MaxHeight <= 0 || d.HeightM <= req.MaxHeight) break;
@@ -1601,6 +1669,7 @@ namespace LaunchPlanner
                 s.Decoupler = StackDecoupler(s.Size) ?? s.Decoupler;
                 s.DecouplerMass = s.Decoupler != null ? s.Decoupler.DryMassT : 0.05;
             }
+            s.Attitude = PlanAttitude(d, index);
 
             BoosterPlan b = s.Boosters;
             if (b != null && !b.Solid)
@@ -1609,7 +1678,7 @@ namespace LaunchPlanner
                 double engD = CraftBuilder.DiameterOf(SizeOf(b.Part));
                 string bs = ChooseSize(b.Fuel, b.Mixture, b.Part, k, 0, CraftBuilder.DiameterOf(s.Size));
                 // A booster taller than the core would stick out below: widen it until it fits.
-                double coreHeight = TanksHeight(s.Tanks) + HeightOf(s.Engine);
+                double coreHeight = TanksHeight(s.Tanks) + HeightOf(s.Engine) + (s.Attitude != null ? s.Attitude.StackHeight : 0);
                 Mixture bm;
                 if (heightsKnown && coreHeight > 0 && mixtures.TryGetValue(b.Mixture, out bm))
                     foreach (string size in bm.Sizes)
@@ -1698,6 +1767,147 @@ namespace LaunchPlanner
         const int MaxWiden = 3;
         int widen;   // diameter steps added when the launcher is too tall
 
+        // ---------- Attitude control ----------
+
+        // Wheels: turn the stage and everything above it at 0.002 rad/s² (90° in about a minute), engines off.
+        const double WheelAccel = 0.002;
+        // RCS: about 0.015 m/s² of translation, and 3 m/s of monopropellant for the stack.
+        const double RcsAccel = 0.015;
+        const double RcsDeltaV = 3;
+        const int MaxWheels = 3;
+        const double CoastFromShare = 0.7;   // of the ascent delta-v: past this, the stage coasts or circularizes
+
+        static bool MonoOnly(PartInfo p)
+        {
+            if (p.Kind != PartKind.Tank || p.Resources.Count == 0 || p.WetMassT <= p.DryMassT) return false;
+            foreach (ResourceAmount r in p.Resources) if (r.Name != "MonoPropellant") return false;
+            return true;
+        }
+
+        /// <summary>
+        /// Reaction wheels and RCS for stage `index`, sized to what it must turn: itself full and all that sits above it
+        /// (rod of the same mass and length). The wheels go between the two tanks closest to the stage's center of mass.
+        /// </summary>
+        AttitudePlan PlanAttitude(LauncherDesign d, int index)
+        {
+            StagePlan s = d.Stages[index];
+            List<PartInfo> stack = new List<PartInfo>();
+            foreach (TankUse t in s.Tanks) for (int n = 0; n < t.Count; n++) stack.Add(t.Tank);
+            if (stack.Count == 0 || (req.ReactionWheels.Count == 0 && req.RcsThrusters.Count == 0)) return null;
+            // A stage that burns out low in the atmosphere is steered by its gimbals and never coasts: nothing to add.
+            if (req.HomeAtmosphere && s.StartDeltaV + s.DeltaV < CoastFromShare * req.AscentDeltaV) return null;
+
+            // Mass and length of what the stage carries once the stages below are gone.
+            double mass = req.PayloadMass + (d.PayloadDecoupler != null ? d.PayloadDecoupler.DryMassT : 0) + (d.Lander != null ? d.Lander.TotalMass : 0);
+            double length = req.PayloadHeight + HeightOf(d.PayloadDecoupler);
+            for (int i = index; i < d.Stages.Count; i++)
+            {
+                StagePlan u = d.Stages[i];
+                mass += u.EngineCount * u.Engine.WetMassT + u.TankDry + u.Fuel + u.DecouplerMass + u.CouplerMass;
+                length += TanksHeight(u.Tanks) + HeightOf(u.Engine) + (i > 0 ? HeightOf(u.Decoupler) : 0);
+                if (i > index && u.Attitude != null) { mass += u.Attitude.Mass; length += u.Attitude.StackHeight; }
+            }
+            if (length <= 0) length = 10;
+            double inertia = mass * length * length / 12;   // t·m²
+            // The payload's own wheels help: the stage only adds what is missing.
+            AttitudePlan a = new AttitudePlan { NeededTorqueKNm = Math.Max(0, inertia * WheelAccel - req.PayloadTorqueKNm) };
+
+            // Center of mass of the stage itself (full), measured downward from the top of its first tank.
+            double y = 0, moment = 0, total = 0;
+            List<double> joints = new List<double>();
+            foreach (PartInfo t in stack)
+            {
+                joints.Add(y);
+                double h = HeightOf(t);
+                moment += t.WetMassT * (y + h / 2);
+                total += t.WetMassT;
+                y += h;
+            }
+            double engines = s.EngineCount * s.Engine.WetMassT;
+            moment += engines * (y + HeightOf(s.Engine) / 2);
+            total += engines;
+            double com = total > 0 ? moment / total : y / 2;
+
+            // Wheels: at each joint (above a tank), the lightest set that gives the torque, or the strongest set.
+            double bestDistance = double.MaxValue;
+            for (int j = 0; j < stack.Count && a.NeededTorqueKNm > 0; j++)
+            {
+                string size = TopSize(stack[j]);
+                PartInfo wheel = null;
+                int count = 0;
+                foreach (PartInfo w in req.ReactionWheels)
+                {
+                    if (w.TorqueKNm <= 0 || !HasSize(w, size)) continue;
+                    int n = Math.Min(MaxWheels, Math.Max(1, (int)Math.Ceiling(a.NeededTorqueKNm / w.TorqueKNm)));
+                    bool enough = n * w.TorqueKNm >= a.NeededTorqueKNm;
+                    bool bestEnough = wheel != null && count * wheel.TorqueKNm >= a.NeededTorqueKNm;
+                    if (wheel == null || (enough && !bestEnough) || (enough && bestEnough && n * w.DryMassT < count * wheel.DryMassT)
+                        || (!enough && !bestEnough && n * w.TorqueKNm > count * wheel.TorqueKNm))
+                    { wheel = w; count = n; }
+                }
+                if (wheel == null) continue;
+                double distance = Math.Abs(joints[j] - com);
+                if (distance < bestDistance) { bestDistance = distance; a.Wheel = wheel; a.Wheels = count; a.Joint = j; }
+            }
+            if (a.Wheel != null) a.TorqueKNm = a.Wheels * a.Wheel.TorqueKNm;
+            else
+            {
+                // No wheel at the stage's size: the monopropellant tank still goes near the center of mass.
+                for (int j = 0; j < stack.Count; j++)
+                    if (Math.Abs(joints[j] - com) < bestDistance) { bestDistance = Math.Abs(joints[j] - com); a.Joint = j; }
+            }
+
+            // RCS: the gentlest thruster that still gives the acceleration with 4 nozzles pushing, or the strongest one.
+            double needed = mass * RcsAccel / 4;   // kN per nozzle
+            // A payload whose own RCS already pushes the whole stack twice as hard (about a quarter of its nozzles push
+            // in any one direction) needs none on the stage.
+            bool payloadRcs = req.PayloadRcsKN / 4 >= 2 * mass * RcsAccel;
+            foreach (PartInfo r in payloadRcs ? new List<PartInfo>() : req.RcsThrusters)
+            {
+                if (r.RcsThrustKN <= 0) continue;
+                bool enough = r.RcsThrustKN >= needed, bestEnough = a.Rcs != null && a.Rcs.RcsThrustKN >= needed;
+                if (a.Rcs == null || (enough && (!bestEnough || r.RcsThrustKN < a.Rcs.RcsThrustKN || (r.RcsThrustKN == a.Rcs.RcsThrustKN && r.DryMassT < a.Rcs.DryMassT)))
+                    || (!enough && !bestEnough && r.RcsThrustKN > a.Rcs.RcsThrustKN))
+                    a.Rcs = r;
+            }
+            if (a.Rcs != null)
+            {
+                // Two rings (top and bottom of the tanks) when one is not strong enough and the stage is long enough;
+                // a single ring goes at the bottom, the farthest from the stack's center of mass (the payload is above).
+                a.Rings = y > 2 && a.Rcs.RcsThrustKN < 2 * needed ? 2 : 1;
+                a.RcsPerRing = 4;
+                a.RingAngle = 45;
+                BoosterPlan b = s.Boosters;
+                if (b != null && b.Count > 0)
+                {
+                    // Between the boosters: 4 when their count allows it (2, 4, 8), otherwise 3 (3, 6).
+                    a.RcsPerRing = b.Count == 2 || b.Count % 4 == 0 ? 4 : 3;
+                    a.RingAngle = b.Count == 2 ? 45 : 180.0 / b.Count;
+                }
+
+                // Monopropellant: stacked with the wheels, or radial tanks in symmetry. The lightest choice, a missing
+                // tonne of monopropellant counting as three tonnes too many (a big tank is not worth a small need).
+                double isp = a.Rcs.RcsIsp > 0 ? a.Rcs.RcsIsp : 240;
+                double mono = mass * RcsDeltaV / (isp * G0);
+                string jointSize = TopSize(stack[a.Joint]);
+                double bestScore = double.MaxValue;
+                foreach (PartInfo p in req.Parts)
+                {
+                    if (!p.Unlocked || !MonoOnly(p)) continue;
+                    bool radial = (p.Sizes ?? "").Trim() == "srf";
+                    if (!radial && !HasSize(p, jointSize)) continue;
+                    foreach (int n in radial ? new[] { 2, a.RcsPerRing } : new[] { 1 })
+                    {
+                        double carried = n * Propellant(p);
+                        double score = n * p.WetMassT + 3 * Math.Max(0, mono - carried);
+                        if (score < bestScore) { bestScore = score; a.MonoTank = p; a.MonoTanks = n; a.MonoRadial = radial; a.MonoT = carried; }
+                    }
+                }
+            }
+            a.StackHeight = (a.Wheel != null ? a.Wheels * HeightOf(a.Wheel) : 0) + (a.MonoTank != null && !a.MonoRadial ? HeightOf(a.MonoTank) : 0);
+            return a.Wheel == null && a.Rcs == null ? null : a;
+        }
+
         /// <summary>Stack height of a part; estimated from its mass when the game does not provide it.</summary>
         static double HeightOf(PartInfo p)
         {
@@ -1739,8 +1949,10 @@ namespace LaunchPlanner
                 StagePlan s = d.Stages[i];
                 double stage = TanksHeight(s.Tanks) + HeightOf(s.Engine) + HeightOf(s.Coupler);
                 if (i > 0 && s.Decoupler != null) stage += HeightOf(s.Decoupler);
+                if (s.Attitude != null) stage += s.Attitude.StackHeight;
                 height += stage;
-                parts += TankParts(s.Tanks) + s.EngineCount + (i > 0 && s.Decoupler != null ? 1 : 0) + (s.Coupler != null ? 1 : 0);
+                parts += TankParts(s.Tanks) + s.EngineCount + (i > 0 && s.Decoupler != null ? 1 : 0) + (s.Coupler != null ? 1 : 0)
+                    + (s.Attitude != null ? s.Attitude.Parts : 0);
                 double dia = CraftBuilder.DiameterOf(s.Size);
                 width = Math.Max(width, dia);
                 BoosterPlan b = s.Boosters;

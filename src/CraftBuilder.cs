@@ -261,17 +261,22 @@ namespace LaunchPlanner
                 int ignition = i == 0 ? 0 : boosterDrops + i;
                 List<CraftPart> stageParts = new List<CraftPart>();
                 CraftPart firstTank = null;
+                AttitudePlan att = s.Attitude;
                 foreach (TankUse t in s.Tanks)
                     for (int n = 0; n < t.Count; n++)
                     {
+                        // Reaction wheels (and the RCS monopropellant) between the two tanks closest to the center of mass.
+                        if (att != null && stageParts.Count == att.Joint) cursor = AddAttitudeStack(cursor, att);
                         cursor = cursor == null ? Make(t.Tank) : StackBelow(cursor, t.Tank);
                         if (firstTank == null) firstTank = cursor;
                         stageParts.Add(cursor);
                     }
+                List<CraftPart> stageTanks = new List<CraftPart>(stageParts);
                 int count = s.EngineCount;
                 if (cursor == null) { cursor = Make(s.Engine); count--; }   // stage without a tank: the engine serves as the root
                 List<CraftPart> engines = AddEngines(cursor, s, count, ignition);
                 stageParts.AddRange(engines);
+                if (att != null && stageTanks.Count > 0) AddRcs(stageTanks, att, i + 1);
 
                 if (i == 0)
                 {
@@ -301,6 +306,66 @@ namespace LaunchPlanner
 
             AssignSeparation();
             return parts;
+        }
+
+        /// <summary>Wheels then the stacked monopropellant tank, below `cursor` (or as the root).</summary>
+        CraftPart AddAttitudeStack(CraftPart cursor, AttitudePlan a)
+        {
+            List<PartInfo> stack = new List<PartInfo>();
+            if (a.Wheel != null) for (int n = 0; n < a.Wheels; n++) stack.Add(a.Wheel);
+            if (a.MonoTank != null && !a.MonoRadial) stack.Add(a.MonoTank);
+            foreach (PartInfo p in stack) cursor = cursor == null ? Make(p) : StackBelow(cursor, p);
+            return cursor;
+        }
+
+        /// <summary>
+        /// RCS thrusters in rings at the top and the bottom of the stage's tanks, as far apart as possible for leverage,
+        /// turned between the boosters; radial monopropellant tanks at mid-height of the tank under the wheels.
+        /// </summary>
+        void AddRcs(List<CraftPart> tanks, AttitudePlan a, int stage)
+        {
+            if (a.Rcs != null && a.RcsPerRing > 0)
+            {
+                // Top ring on the first tank of full width (an adapter tank narrows toward its top).
+                CraftPart top = tanks.Find(t => t.Shape.Diameter >= tanks[tanks.Count - 1].Shape.Diameter - 0.01) ?? tanks[0];
+                CraftPart bottom = tanks[tanks.Count - 1];
+                for (int ring = 0; ring < a.Rings; ring++)
+                {
+                    bool upper = a.Rings == 2 && ring == 0;
+                    CraftPart host = upper ? top : bottom;
+                    double span = Top(host) - Bottom(host);
+                    double y = upper ? Top(host) - Math.Min(0.5, 0.15 * span) : Bottom(host) + Math.Min(0.5, 0.15 * span);
+                    SetSymmetry(Ring(host, a.Rcs, a.RcsPerRing, a.RingAngle, y));
+                }
+            }
+            if (a.MonoTank != null && a.MonoRadial)
+            {
+                // On the first full-width tank under the wheels (an adapter tank's side slopes away).
+                double full = tanks[tanks.Count - 1].Shape.Diameter - 0.01;
+                CraftPart host = tanks.Find(t => tanks.IndexOf(t) >= a.Joint && t.Shape.Diameter >= full && t.Info.Sizes.Split(',').Length < 2)
+                    ?? tanks[Math.Min(a.Joint, tanks.Count - 1)];
+                // Two tanks face to face (between the boosters when there are some), or one per thruster position.
+                double first = a.MonoTanks == 2 && a.RcsPerRing == 3 ? a.RingAngle + 60 : a.RingAngle;
+                SetSymmetry(Ring(host, a.MonoTank, a.MonoTanks, first, (Top(host) + Bottom(host)) / 2));
+            }
+            List<string> what = new List<string>();
+            if (a.Wheel != null) what.Add(string.Format("{0} × {1} as close to its center of mass as the tank sizes allow ({2:0} kN·m for {3:0} wanted)", a.Wheels, a.Wheel.Title, a.TorqueKNm, a.NeededTorqueKNm));
+            if (a.Rcs != null) what.Add(string.Format("{0} × {1} in {2}", a.Rings * a.RcsPerRing, a.Rcs.Title, a.Rings == 2 ? "two rings, top and bottom" : "a ring at the bottom"));
+            if (a.MonoTank != null) what.Add(string.Format("{0} × {1} ({2:0.##} t of monopropellant)", a.MonoTanks, a.MonoTank.Title, a.MonoT));
+            else if (a.Rcs != null) what.Add("no monopropellant tank unlocked: the RCS draws on the payload's");
+            Notes.Add(string.Format("Stage {0}: {1}. Turn RCS on (R) to steer while the engines are off.", stage, string.Join(", ", what.ToArray())));
+        }
+
+        List<CraftPart> Ring(CraftPart host, PartInfo info, int count, double firstAngle, double y)
+        {
+            List<CraftPart> ring = new List<CraftPart>();
+            for (int k = 0; k < count; k++)
+            {
+                Vec3 outward = new Vec3(0, 0, 1).Yaw(firstAngle + 360.0 * k / count);
+                Vec3 point = new Vec3(host.Pos.X, y, host.Pos.Z) + outward * (host.Shape.Diameter / 2);
+                ring.Add(SurfaceAt(host, info, point, outward));
+            }
+            return ring;
         }
 
         CraftPart landerTank, landerEngine;

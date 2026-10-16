@@ -122,6 +122,16 @@ static class LauncherDesignerTest
                         Unlocked = true, DryMassT = 0.1 * d, Cost = 500, StackOutputs = n, TopDiameterM = d, OutputDiameterM = d / 2,
                         OutputSpacingM = n == 2 ? d / 2 : d * 0.55, HeightM = 0.4 });
                 }
+        // Fake reaction wheels and RCS thrusters, like the stock ones (NOATTITUDE=1 to go without)
+        if (Environment.GetEnvironmentVariable("NOATTITUDE") == null)
+        {
+            req.ReactionWheels.Add(new PartInfo { Name = "fakeWheelsize1", Title = "Wheel 1.25 m", Sizes = "size1", Kind = PartKind.Tank, Unlocked = true, DryMassT = 0.1, Cost = 1000, TorqueKNm = 15, HeightM = 0.4 });
+            req.ReactionWheels.Add(new PartInfo { Name = "fakeWheelsize2", Title = "Wheel 2.5 m", Sizes = "size2", Kind = PartKind.Tank, Unlocked = true, DryMassT = 0.4, Cost = 2000, TorqueKNm = 30, HeightM = 0.6 });
+            req.RcsThrusters.Add(new PartInfo { Name = "fakeRcs1", Title = "RCS block", Sizes = "srf", Kind = PartKind.Tank, Unlocked = true, DryMassT = 0.05, Cost = 620, RcsThrustKN = 1, RcsNozzles = 4, RcsIsp = 240 });
+            req.RcsThrusters.Add(new PartInfo { Name = "fakeRcs2", Title = "Linear RCS", Sizes = "srf", Kind = PartKind.Tank, Unlocked = true, DryMassT = 0.03, Cost = 300, RcsThrustKN = 2, RcsNozzles = 1, RcsIsp = 240 });
+        }
+        req.PayloadTorqueKNm = D(Environment.GetEnvironmentVariable("PAYLOADTORQUE") ?? "0");
+        req.PayloadRcsKN = D(Environment.GetEnvironmentVariable("PAYLOADRCS") ?? "0");
         Stopwatch sw = Stopwatch.StartNew();
         LauncherDesigner.Log = m => Console.Error.WriteLine(sw.ElapsedMilliseconds + " ms " + m);
         LauncherDesigner designer = new LauncherDesigner(req);
@@ -145,6 +155,11 @@ static class LauncherDesignerTest
                 StagePlan s = d.Stages[i];
                 Console.WriteLine("   Stage {0} (Ø {6}): {1} × {2}; {3}; Δv {4:0}, TWR {5:0.00}", i + 1, s.EngineCount, s.Engine.Title, Tanks(s.Tanks), s.DeltaV, s.Twr, LauncherDesigner.Diameter(s.Size));
                 if (s.Coupler != null) Console.WriteLine("      under a " + s.Coupler.Title);
+                AttitudePlan a = s.Attitude;
+                if (a != null)
+                    Console.WriteLine("      attitude: {0} × {1} at joint {2} ({3:0} / {4:0} kN·m); {5} × {6}; {7} × {8} ({9:0.00} t mono{10})",
+                        a.Wheels, a.Wheel != null ? a.Wheel.Title : "-", a.Joint, a.TorqueKNm, a.NeededTorqueKNm, a.Rings * a.RcsPerRing, a.Rcs != null ? a.Rcs.Title : "-",
+                        a.MonoTanks, a.MonoTank != null ? a.MonoTank.Title : "-", a.MonoT, a.MonoRadial ? ", radial" : "");
                 if (s.Boosters != null)
                     Console.WriteLine("      + {0} × {4}{1}{2}{3}", s.Boosters.Count, s.Boosters.Part.Title, s.Boosters.Solid ? "" : " with " + Tanks(s.Boosters.Tanks),
                         s.Boosters.NoseCone != null ? ", " + string.Join(" + ", s.Boosters.NoseAdapters.ConvertAll(x => x.Title).ToArray()) + (s.Boosters.NoseAdapters.Count > 0 ? " + " : "") + s.Boosters.NoseCone.Title : "",
@@ -198,7 +213,8 @@ class FakeShapes : IPartShapes
         double h = p.Kind == PartKind.Decoupler ? 0.2 : p.Kind == PartKind.Engine ? 1.5
             : Math.Max(0.3, (p.WetMassT - p.DryMassT) / 1.0 / (Math.PI * d * d / 4));
         if (p.Name.StartsWith("fakeCone")) h = d;
-        if (p.StackOutputs > 0) h = p.HeightM;
+        if (p.StackOutputs > 0 || p.TorqueKNm > 0) h = p.HeightM;
+        if (p.RcsThrustKN > 0) { d = 0.3; h = 0.3; }
         PartShape s = new PartShape { Diameter = d, TopNode = "top", BottomNode = "bottom", TopY = h / 2, BottomY = -h / 2 };
         if (p.Name.StartsWith("fakeCone")) { s.TopNode = "bottom"; s.BottomNode = null; s.TopY = -h / 2; }
         for (int i = 0; i < p.StackOutputs; i++)

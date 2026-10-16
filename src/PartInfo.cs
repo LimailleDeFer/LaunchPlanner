@@ -34,6 +34,12 @@ namespace LaunchPlanner
         // Structural adapters (no propellant): profile of the top and bottom nodes
         public string AdapterTop = "";
         public string AdapterBottom = "";
+        // Reaction wheels: smallest of the pitch and yaw torques (kN·m)
+        public double TorqueKNm;
+        // RCS thrusters: thrust of one nozzle (kN), number of nozzles, vacuum Isp
+        public double RcsThrustKN;
+        public int RcsNozzles;
+        public double RcsIsp;
         public bool Unlocked;
         public PartKind Kind;
         public double Cost;

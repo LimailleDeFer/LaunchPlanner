@@ -140,11 +140,15 @@ namespace LaunchPlanner
             req.NoseCones = StructuralParts.NoseCones();
             req.Adapters = StructuralParts.Adapters();
             req.Couplers = StructuralParts.MultiCouplers();
+            req.ReactionWheels = StructuralParts.ReactionWheels();
+            req.RcsThrusters = StructuralParts.RcsThrusters();
             if (!manualMass && mission.Payload.Present)
             {
                 req.PayloadHeight = mission.Payload.HeightM;
                 req.PayloadWidth = mission.Payload.WidthM;
                 req.PayloadParts = mission.Payload.PartCount;
+                req.PayloadTorqueKNm = mission.Payload.TorqueKNm;
+                req.PayloadRcsKN = mission.Payload.RcsKN;
                 req.PayloadBottomSize = StructuralParts.PayloadBottomSize();
             }
             Budget budget = mission.Current;
@@ -327,6 +331,13 @@ namespace LaunchPlanner
                 foreach (TankUse t in s.Tanks) Label("  " + t.Count + " × " + t.Tank.Title);
                 if (s.Coupler != null) Label("  1 × " + s.Coupler.Title);
                 if (s.Decoupler != null) Label("  1 × " + s.Decoupler.Title);
+                AttitudePlan att = s.Attitude;
+                if (att != null)
+                {
+                    if (att.Wheel != null) Label("  " + att.Wheels + " × " + att.Wheel.Title);
+                    if (att.Rcs != null) Label("  " + att.Rings * att.RcsPerRing + " × " + att.Rcs.Title);
+                    if (att.MonoTank != null) Label("  " + att.MonoTanks + " × " + att.MonoTank.Title);
+                }
                 BoosterPlan b = s.Boosters;
                 if (b != null && b.Count > 0)
                 {

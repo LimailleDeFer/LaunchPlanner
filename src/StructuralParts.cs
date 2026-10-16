@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace LaunchPlanner
 {
-    /// <summary>Fuel-less parts useful to the builder: booster nose cones, multi-couplers for clusters.</summary>
+    /// <summary>Fuel-less parts useful to the builder: booster nose cones, multi-couplers for clusters, reaction wheels, RCS.</summary>
     public static class StructuralParts
     {
         static readonly HashSet<string> Excluded = new HashSet<string>
@@ -150,6 +150,64 @@ namespace LaunchPlanner
                 catch (Exception) { }
             }
             return couplers;
+        }
+
+        /// <summary>Inline reaction wheels: two stack nodes (top and bottom), torque taken as the weaker of pitch and yaw.</summary>
+        public static List<PartInfo> ReactionWheels()
+        {
+            List<PartInfo> wheels = new List<PartInfo>();
+            if (PartLoader.LoadedPartsList == null) return wheels;
+            foreach (AvailablePart ap in PartLoader.LoadedPartsList)
+            {
+                try
+                {
+                    Part prefab;
+                    if (!Usable(ap, out prefab)) continue;
+                    ModuleReactionWheel wheel = prefab.FindModuleImplementing<ModuleReactionWheel>();
+                    if (wheel == null) continue;
+                    List<AttachNode> nodes = StackNodes(prefab);
+                    if (nodes.Count != 2) continue;
+                    AttachNode top = nodes[0].position.y > nodes[1].position.y ? nodes[0] : nodes[1];
+                    AttachNode bottom = top == nodes[0] ? nodes[1] : nodes[0];
+                    if (top.orientation.y < 0.5f || bottom.orientation.y > -0.5f) continue;
+                    PartInfo info = Info(ap, prefab);
+                    if (string.IsNullOrEmpty(info.Sizes) || !info.Sizes.Contains("size")) info.Sizes = "size" + Math.Max(0, top.size);
+                    info.TorqueKNm = Math.Min(wheel.PitchTorque, wheel.YawTorque);
+                    info.HeightM = top.position.y - bottom.position.y;
+                    if (info.TorqueKNm > 0) wheels.Add(info);
+                }
+                catch (Exception) { }
+            }
+            return wheels;
+        }
+
+        /// <summary>RCS thrusters burning monopropellant alone, attached to the surface.</summary>
+        public static List<PartInfo> RcsThrusters()
+        {
+            List<PartInfo> thrusters = new List<PartInfo>();
+            if (PartLoader.LoadedPartsList == null) return thrusters;
+            foreach (AvailablePart ap in PartLoader.LoadedPartsList)
+            {
+                try
+                {
+                    Part prefab;
+                    if (!Usable(ap, out prefab) || prefab.srfAttachNode == null) continue;
+                    if (StackNodes(prefab).Count > 0) continue;
+                    ModuleRCS rcs = prefab.FindModuleImplementing<ModuleRCS>();
+                    if (rcs == null || rcs.isJustForShow || rcs.thrusterPower <= 0) continue;
+                    bool mono = rcs.propellants != null && rcs.propellants.Count > 0
+                        ? rcs.propellants.TrueForAll(p => p.name == "MonoPropellant")
+                        : rcs.resourceName == "MonoPropellant";
+                    if (!mono) continue;
+                    PartInfo info = Info(ap, prefab);
+                    info.RcsThrustKN = rcs.thrusterPower;
+                    info.RcsNozzles = Math.Max(1, prefab.FindModelTransforms(rcs.thrusterTransformName).Length);
+                    info.RcsIsp = rcs.atmosphereCurve != null ? rcs.atmosphereCurve.Evaluate(0) : 240;
+                    thrusters.Add(info);
+                }
+                catch (Exception) { }
+            }
+            return thrusters;
         }
 
         /// <summary>Profile of the lowest free node of the payload (where the launcher attaches), or "".</summary>
