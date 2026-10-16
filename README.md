@@ -121,3 +121,10 @@ Trying the launcher computation outside the game, from an `inventory.csv` export
 mcs tests/LauncherDesignerTest.cs src/LauncherDesigner.cs src/PartInfo.cs src/CraftBuilder.cs src/CraftWriter.cs -out:build/designer.exe
 mono build/designer.exe inventory.csv 5 4500
 ```
+
+## License and notices
+
+LaunchPlanner is released under the MIT License (see `LICENSE`). It contains no code or assets from the game or from
+other mods: it only reads the parts loaded in your game at runtime. It is an unofficial fan-made mod, not affiliated
+with or endorsed by Squad, Intercept Games or Take-Two Interactive. Kerbal Space Program is a trademark of its owners.
+It collects no data and makes no network connection.
