@@ -31,8 +31,12 @@ for stub in stubs/extra/*.cs; do
   EXTRA+=(-r:"$OUT/ref/$name.dll")
 done
 
+# Compile against the .NET 4.7.1 reference assemblies (what KSP's Mono runtime offers), not
+# the newer Mono runtime libraries: otherwise calls such as string.Split(char) bind to
+# overloads that do not exist in the game and fail with MissingMethodException.
+API="${NETAPI:-/usr/lib/mono/4.7.1-api}"
 echo "Building the mod"
-mcs -nologo -target:library -optimize -sdk:4.5 -out:"$MOD/Plugins/LaunchPlanner.dll" \
+mcs -nologo -target:library -optimize -nostdlib -r:"$API/mscorlib.dll" -r:"$API/System.dll" -r:"$API/System.Core.dll" -out:"$MOD/Plugins/LaunchPlanner.dll" \
   -r:"$REF/Assembly-CSharp.dll" -r:"$REF/UnityEngine.CoreModule.dll" -r:"$REF/UnityEngine.IMGUIModule.dll" "${EXTRA[@]}" \
   src/*.cs
 

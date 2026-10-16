@@ -264,7 +264,7 @@ namespace LaunchPlanner
 
         public static string SizeOf(PartInfo p)
         {
-            foreach (string raw in (p.Sizes ?? "").Split(','))
+            foreach (string raw in (p.Sizes ?? "").Split(new[] { ',' }))
             {
                 string s = raw.Trim();
                 if (s.Length > 0 && s != "srf") return s;
@@ -275,7 +275,7 @@ namespace LaunchPlanner
         static int StackSizes(PartInfo p)
         {
             int n = 0;
-            foreach (string raw in (p.Sizes ?? "").Split(','))
+            foreach (string raw in (p.Sizes ?? "").Split(new[] { ',' }))
             {
                 string s = raw.Trim();
                 if (s.Length > 0 && s != "srf") n++;
@@ -285,7 +285,7 @@ namespace LaunchPlanner
 
         static bool HasSize(PartInfo p, string size)
         {
-            foreach (string raw in (p.Sizes ?? "").Split(','))
+            foreach (string raw in (p.Sizes ?? "").Split(new[] { ',' }))
                 if (raw.Trim() == size) return true;
             return false;
         }
@@ -350,7 +350,7 @@ namespace LaunchPlanner
             {
                 if (!p.Unlocked || p.Kind != PartKind.Engine || p.ThrustVacKN <= 0 || p.IspVac <= 0) continue;
                 if (SizeOf(p).Length == 0) continue;   // radial engines: not for a stacked stage
-                string key = MixtureKey((p.Propellants ?? "").Split('+'));
+                string key = MixtureKey((p.Propellants ?? "").Split(new[] { '+' }));
                 if (!mixtures.ContainsKey(key)) continue;
                 engineMixture[p] = key;
                 upperEngines.Add(p);
