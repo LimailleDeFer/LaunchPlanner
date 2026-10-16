@@ -30,7 +30,7 @@ namespace LaunchPlanner
 
             // A launcher generated earlier and still attached is not part of the payload.
             HashSet<uint> launcher = CraftSpawner.LauncherIds();
-            List<Part> mine = ship.parts.FindAll(x => !launcher.Contains(x.persistentId));
+            List<Part> mine = ship.parts.FindAll(x => !CraftSpawner.OldLauncher(x, launcher));
             p.OldLauncherParts = ship.parts.Count - mine.Count;
             if (mine.Count == 0) { mine = ship.parts; p.OldLauncherParts = 0; }
             p.PartCount = mine.Count;

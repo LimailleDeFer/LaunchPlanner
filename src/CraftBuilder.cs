@@ -146,6 +146,9 @@ namespace LaunchPlanner
         readonly List<CraftPart> parts = new List<CraftPart>();
         public readonly List<string> Notes = new List<string>();
         uint nextId = 100001;
+
+        /// <summary>First part id: above those of the payload, so that no two parts of the vessel share a key.</summary>
+        public uint FirstId { set { nextId = Math.Max(nextId, value); } }
         int actions;
 
         /// <summary>Unlocked fuel line (FTX-2) for asparagus staging; null to go through the decouplers.</summary>
@@ -280,7 +283,12 @@ namespace LaunchPlanner
                 if (s.Decoupler != null)
                 {
                     CraftPart dec = StackBelow(below, s.Decoupler);
-                    if (below != engines[0] && engines.Count > 0) dec.Pos.Y -= engines[0].Shape.Height;
+                    if (below != engines[0] && engines.Count > 0)
+                    {
+                        dec.Pos.Y -= engines[0].Shape.Height;
+                        Notes.Add(string.Format("Stage {0}: its engines are around the tank, so the decoupler sits below their nozzles, " +
+                            "with a gap: add an interstage or a fairing around them if you have one.", i + 1));
+                    }
                     dec.Activation = ignition;
                     cursor = dec;
                 }
@@ -348,14 +356,16 @@ namespace LaunchPlanner
         List<CraftPart> AddEngines(CraftPart tank, StagePlan s, int n, int ignition)
         {
             if (tank.Info == s.Engine) { tank.Activation = ignition; return new List<CraftPart> { tank }; }
-            return AddEngines(tank, s.Engine, n, s.Coupler, ignition, true);
+            // With boosters, the core's ring is turned so its engines sit between the boosters, not in front of them.
+            double baseAngle = s.Boosters != null && s.Boosters.Count > 0 ? 180.0 / s.Boosters.Count : 0;
+            return AddEngines(tank, s.Engine, n, s.Coupler, ignition, true, baseAngle);
         }
 
         /// <summary>
         /// Engines under a tank. Without <paramref name="symmetry"/> the ring is not linked in symmetry (each booster's
         /// engines are paired with the same engine of the other boosters instead).
         /// </summary>
-        List<CraftPart> AddEngines(CraftPart tank, PartInfo engine, int n, PartInfo couplerInfo, int ignition, bool symmetry)
+        List<CraftPart> AddEngines(CraftPart tank, PartInfo engine, int n, PartInfo couplerInfo, int ignition, bool symmetry, double baseAngle = 0)
         {
             List<CraftPart> engines = new List<CraftPart>();
             if (n <= 0) return engines;
@@ -403,7 +413,7 @@ namespace LaunchPlanner
             List<CraftPart> group = new List<CraftPart>();
             for (int j = 0; j < ring; j++)
             {
-                double angle = 360.0 * j / ring;
+                double angle = baseAngle + 360.0 * j / ring;
                 CraftPart e = Make(engine);
                 double top = e.Shape.TopNode != null ? e.Shape.TopY : e.Shape.Height / 2;
                 e.Pos = new Vec3(tank.Pos.X, y - top, tank.Pos.Z) + new Vec3(0, 0, radius).Yaw(angle);
@@ -462,23 +472,13 @@ namespace LaunchPlanner
                 else if (Math.Abs(attachY - (Top(t) + Bottom(t)) / 2) < Math.Abs(attachY - (Top(host) + Bottom(host)) / 2)) host = t;
             attachY = Math.Max(Bottom(host), Math.Min(Top(host), attachY));
             double coreR = host.Shape.Diameter / 2;
-            // Clearance: the booster's axis stays outside the widest core tank plus the booster's own widest part,
+            // Clearance: the booster's axis sits at the core tank's radius + decoupler + the booster's widest tank,
             // whatever the surface attach point of its top part says (adapter tanks have it on their narrow part).
+            // Engines are kept apart by turning the rings (between the boosters for the core, tangential on the boosters).
             double widestCore = 0, widestBooster = 0;
-            foreach (CraftPart t in tanks) widestCore = Math.Max(widestCore, t.Shape.Diameter / 2);
-            foreach (PartInfo p in stack) widestBooster = Math.Max(widestBooster, shapes.Get(p).Diameter / 2);
-            if (cluster && b.Coupler == null && b.EnginesEach > 1 && b.Tanks.Count > 0)
-            {
-                // Engines in a ring under the booster can stick out past its tank (same radius as AddEngines).
-                PartShape last = shapes.Get(b.Tanks[b.Tanks.Count - 1].Tank), es = shapes.Get(b.Part);
-                double engR = es.Diameter / 2;
-                double ring = Math.Max(last.Diameter / 2 - engR, engR / Math.Sin(Math.PI / Math.Max(2, b.EnginesEach)));
-                widestBooster = Math.Max(widestBooster, ring + engR);
-            }
-            // Same for the core's engines.
-            foreach (CraftPart e in coreEngines)
-                widestCore = Math.Max(widestCore, Math.Sqrt((e.Pos.X - host.Pos.X) * (e.Pos.X - host.Pos.X) + (e.Pos.Z - host.Pos.Z) * (e.Pos.Z - host.Pos.Z)) + e.Shape.Diameter / 2);
-
+            widestCore = coreR;
+            foreach (PartInfo p in stack)
+                if (p != b.Part || b.Solid) widestBooster = Math.Max(widestBooster, shapes.Get(p).Diameter / 2);
             List<List<CraftPart>> perBooster = new List<List<CraftPart>>();
             List<CraftPart> cones = new List<CraftPart>();
             for (int i = 0; i < b.Count; i++)
@@ -503,7 +503,7 @@ namespace LaunchPlanner
                 CraftPart cur = SurfaceAt(mount, stack[0], point, outward);
                 double radial = Vec3.Dot(new Vec3(cur.Pos.X - host.Pos.X, 0, cur.Pos.Z - host.Pos.Z), outward);
                 double needed = widestCore + decThickness + widestBooster;
-                if (radial < needed) cur.Pos = cur.Pos + outward * (needed - radial);
+                if (Math.Abs(radial - needed) > 0.05) cur.Pos = cur.Pos + outward * (needed - radial);
                 mine.Add(cur);
                 for (int j = 1; j < stacked; j++)
                 {
@@ -514,7 +514,8 @@ namespace LaunchPlanner
                 {
                     // Several engines under the booster's last tank: on a multi-coupler, or in a ring.
                     CraftPart last = cur;
-                    List<CraftPart> engines = AddEngines(last, b.Part, b.EnginesEach, b.Coupler, 0, false);
+                    // Ring turned tangentially: the booster's engines stay clear of the core.
+                    List<CraftPart> engines = AddEngines(last, b.Part, b.EnginesEach, b.Coupler, 0, false, angle + 90);
                     CraftPart coupler = last.Children.Find(c => b.Coupler != null && c.Info == b.Coupler);
                     if (coupler != null) mine.Add(coupler);
                     mine.AddRange(engines);

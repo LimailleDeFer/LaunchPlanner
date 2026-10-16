@@ -918,10 +918,18 @@ namespace LaunchPlanner
         // Possible upper stages (delta-v, mass); only the non-dominated ones are kept.
         List<Upper> UpperFront()
         {
+            // One engine on the bottom node (Sebastien's rule): it fills the space above the decoupler, whereas a
+            // ring of engines on the tank's side leaves a gap down to it. Two only if no single engine will do.
+            List<Upper> front = UpperFront(1);
+            return front.Count > 0 ? front : UpperFront(MaxEnginesPerStage);
+        }
+
+        List<Upper> UpperFront(int maxEngines)
+        {
             List<Upper> all = new List<Upper>();
             double payload = Math.Max(0.1, req.PayloadMass);
             foreach (PartInfo e in upperEngines)
-                for (int n = 1; n <= MaxEnginesPerStage; n++)
+                for (int n = 1; n <= maxEngines; n++)
                     for (int k = 0; k < 28; k++)
                     {
                         double fuel = payload * 0.05 * Math.Pow(1.35, k);

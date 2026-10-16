@@ -86,6 +86,9 @@ namespace LaunchPlanner
 
             KspPartShapes shapes = new KspPartShapes();
             CraftBuilder builder = new CraftBuilder(shapes) { FuelLine = FuelLine() };
+            // Part keys are name_craftID: the launcher's ids must not collide with the payload's.
+            if (editor.ship != null && editor.ship.parts != null)
+                foreach (Part p in editor.ship.parts) builder.FirstId = p.craftID + 1;
             List<CraftPart> parts = builder.Build(design);
             notes.AddRange(builder.Notes);
 
@@ -127,7 +130,7 @@ namespace LaunchPlanner
             result = null;
             // A launcher generated earlier is replaced: its parts are left out.
             HashSet<uint> oldIds = LauncherIds();
-            List<Part> payload = ship.parts.FindAll(x => !oldIds.Contains(x.persistentId));
+            List<Part> payload = ship.parts.FindAll(x => !OldLauncher(x, oldIds));
             if (payload.Count == 0) payload = ship.parts;
             HashSet<Part> old = new HashSet<Part>(ship.parts.FindAll(x => !payload.Contains(x)));
             // Free stack node, facing down, the lowest on the vessel.
@@ -183,6 +186,14 @@ namespace LaunchPlanner
             RememberLauncher(launcherParts);
             result = shipNode;
             return null;
+        }
+
+        /// <summary>A part of a launcher generated earlier, or attached below one.</summary>
+        public static bool OldLauncher(Part p, HashSet<uint> ids)
+        {
+            for (Part q = p; q != null; q = q.parent)
+                if (ids.Contains(q.persistentId)) return true;
+            return false;
         }
 
         /// <summary>Removes these parts from the saved vessel, with the links and nodes that point to them.</summary>
