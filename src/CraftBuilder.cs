@@ -462,6 +462,22 @@ namespace LaunchPlanner
                 else if (Math.Abs(attachY - (Top(t) + Bottom(t)) / 2) < Math.Abs(attachY - (Top(host) + Bottom(host)) / 2)) host = t;
             attachY = Math.Max(Bottom(host), Math.Min(Top(host), attachY));
             double coreR = host.Shape.Diameter / 2;
+            // Clearance: the booster's axis stays outside the widest core tank plus the booster's own widest part,
+            // whatever the surface attach point of its top part says (adapter tanks have it on their narrow part).
+            double widestCore = 0, widestBooster = 0;
+            foreach (CraftPart t in tanks) widestCore = Math.Max(widestCore, t.Shape.Diameter / 2);
+            foreach (PartInfo p in stack) widestBooster = Math.Max(widestBooster, shapes.Get(p).Diameter / 2);
+            if (cluster && b.Coupler == null && b.EnginesEach > 1 && b.Tanks.Count > 0)
+            {
+                // Engines in a ring under the booster can stick out past its tank (same radius as AddEngines).
+                PartShape last = shapes.Get(b.Tanks[b.Tanks.Count - 1].Tank), es = shapes.Get(b.Part);
+                double engR = es.Diameter / 2;
+                double ring = Math.Max(last.Diameter / 2 - engR, engR / Math.Sin(Math.PI / Math.Max(2, b.EnginesEach)));
+                widestBooster = Math.Max(widestBooster, ring + engR);
+            }
+            // Same for the core's engines.
+            foreach (CraftPart e in coreEngines)
+                widestCore = Math.Max(widestCore, Math.Sqrt((e.Pos.X - host.Pos.X) * (e.Pos.X - host.Pos.X) + (e.Pos.Z - host.Pos.Z) * (e.Pos.Z - host.Pos.Z)) + e.Shape.Diameter / 2);
 
             List<List<CraftPart>> perBooster = new List<List<CraftPart>>();
             List<CraftPart> cones = new List<CraftPart>();
@@ -485,6 +501,9 @@ namespace LaunchPlanner
                 }
                 int stacked = cluster ? stack.Count - (b.Coupler != null ? 2 : 1) : stack.Count;
                 CraftPart cur = SurfaceAt(mount, stack[0], point, outward);
+                double radial = Vec3.Dot(new Vec3(cur.Pos.X - host.Pos.X, 0, cur.Pos.Z - host.Pos.Z), outward);
+                double needed = widestCore + decThickness + widestBooster;
+                if (radial < needed) cur.Pos = cur.Pos + outward * (needed - radial);
                 mine.Add(cur);
                 for (int j = 1; j < stacked; j++)
                 {

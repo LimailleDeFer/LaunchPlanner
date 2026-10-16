@@ -14,7 +14,11 @@ namespace LaunchPlanner
         {
             PartShape shape;
             if (cache.TryGetValue(part.Name, out shape)) return shape;
-            shape = new PartShape { Diameter = CraftBuilder.DiameterOf(LauncherDesigner.SizeOf(part)) };
+            // Widest profile (an adapter tank lists two), or the model's measured width if larger.
+            double width = part.DiameterM;
+            foreach (string raw in (part.Sizes ?? "").Split(new[] { ',' }))
+                if (raw.Trim().StartsWith("size")) width = Math.Max(width, CraftBuilder.DiameterOf(raw.Trim()));
+            shape = new PartShape { Diameter = width > 0 ? width : CraftBuilder.DiameterOf(LauncherDesigner.SizeOf(part)) };
             AvailablePart ap = PartLoader.getPartInfoByName(part.Name);
             Part prefab = ap != null ? ap.partPrefab : null;
             if (prefab != null)
