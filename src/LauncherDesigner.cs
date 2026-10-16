@@ -9,22 +9,22 @@ namespace LaunchPlanner
         public int Count;
     }
 
-    /// <summary>Boosters montés autour du premier étage.</summary>
+    /// <summary>Boosters mounted around the first stage.</summary>
     public class BoosterPlan
     {
         public int Count;
         public bool Solid;
-        public bool Crossfeed;          // asperges : les boosters alimentent le corps central et sont largués 2 par 2
-        public PartInfo Part;           // propulseur à poudre, ou moteur d'un booster liquide
+        public bool Crossfeed;          // asparagus: the boosters feed the core and are dropped 2 by 2
+        public PartInfo Part;           // solid motor, or engine of a liquid booster
         public string Mixture = "";
         public List<TankUse> Tanks = new List<TankUse>();
-        public double Fuel;             // ergols par booster (t)
-        public double TankDry;          // masse à vide des réservoirs d'un booster (t)
-        public PartInfo Decoupler;      // découpleur radial
+        public double Fuel;             // propellant per booster (t)
+        public double TankDry;          // dry mass of a booster's tanks (t)
+        public PartInfo Decoupler;      // radial decoupler
         public double DecouplerMass;
-        public PartInfo Separator;      // fusée de séparation (Sepratron) qui écarte le booster largué
-        public int SeparatorsEach;      // nombre par booster, selon sa masse à vide
-        public PartInfo NoseCone;       // cône de nez sur le haut du booster
+        public PartInfo Separator;      // separation motor (Sepratron) that pushes the dropped booster away
+        public int SeparatorsEach;      // count per booster, based on its dry mass
+        public PartInfo NoseCone;       // nose cone on top of the booster
         public double NoseMass;
 
         public double DryEach
@@ -47,17 +47,17 @@ namespace LaunchPlanner
         public List<TankUse> Tanks = new List<TankUse>();
         public double Fuel;             // t
         public double TankDry;          // t
-        public PartInfo Decoupler;      // découpleur sous l'étage (aucun pour le premier étage)
+        public PartInfo Decoupler;      // decoupler under the stage (none for the first stage)
         public double DecouplerMass;
         public BoosterPlan Boosters;
-        public PartInfo Coupler;        // coupleur multiple sous le réservoir, qui porte la grappe de moteurs
+        public PartInfo Coupler;        // multi-coupler under the tank, carrying the engine cluster
         public double CouplerMass;
 
-        // Résultats de la simulation
+        // Simulation results
         public double DeltaV;
-        public double StartDeltaV;      // Δv déjà fourni par les étages inférieurs à l'allumage
-        public double CoreTwr;          // TWR du corps central seul, une fois les boosters largués
-        public double CoreStartDeltaV;  // Δv cumulé au largage des boosters
+        public double StartDeltaV;      // delta-v already provided by the lower stages at ignition
+        public double CoreTwr;          // TWR of the core alone, once the boosters are dropped
+        public double CoreStartDeltaV;  // cumulative delta-v at booster drop
         public double Cost;
         public double Twr;
         public double MassStart;
@@ -82,23 +82,23 @@ namespace LaunchPlanner
     {
         public string Variant;
         public string Description;
-        public List<StagePlan> Stages = new List<StagePlan>();   // du premier étage (bas) au dernier (haut)
+        public List<StagePlan> Stages = new List<StagePlan>();   // from the first stage (bottom) to the last (top)
         public bool Valid;
         public string Problem = "";
-        public double TotalMass;      // lanceur + charge utile
+        public double TotalMass;      // launcher + payload
         public double LauncherMass;
         public double Cost;
         public double DeltaV;
         public double LiftoffTwr;
         public List<string> Notes = new List<string>();
-        public PartInfo PayloadDecoupler;   // découpleur entre la charge utile et le dernier étage
+        public PartInfo PayloadDecoupler;   // decoupler between the payload and the last stage
 
-        // Étage atterrisseur, sous la charge utile, quand elle ne peut pas se poser seule
+        // Lander stage, under the payload, when it cannot land by itself
         public StagePlan Lander;
         public PartInfo LanderLegs;
         public int LanderLegCount;
 
-        // Encombrement estimé, charge utile comprise
+        // Estimated size, payload included
         public double HeightM;
         public double WidthM;
         public int PartCount;
@@ -108,57 +108,57 @@ namespace LaunchPlanner
     {
         public List<PartInfo> Parts;
         public double PayloadMass;      // t
-        public double TargetDeltaV;     // m/s que le lanceur doit fournir
+        public double TargetDeltaV;     // m/s the launcher must provide
         public double HomeGravity = 9.81;
         public bool HomeAtmosphere = true;
         public double MinLiftoffTwr = 1.3;
         public double MinUpperTwr = 0.5;
-        public double AscentDeltaV = 3400; // Δv de la mise en orbite depuis le sol : les étages allumés avant ont besoin de poussée
+        public double AscentDeltaV = 3400; // delta-v of ascent to orbit from the ground: stages lit earlier need thrust
         public bool MinimizeCost;
 
-        // Limites du VAB et du pas de tir (0 = pas de limite, par exemple en mode bac à sable)
+        // VAB and launch pad limits (0 = no limit, e.g. in sandbox mode)
         public double MaxHeight;        // m
         public double MaxWidth;         // m
         public int MaxParts;
-        public double MaxMass;          // t, au décollage
+        public double MaxMass;          // t, at liftoff
         public double PayloadHeight;    // m
         public double PayloadWidth;     // m
         public int PayloadParts;
 
-        // Étage atterrisseur (0 = la charge utile se pose seule)
-        public double LanderDeltaV;     // m/s que l'atterrisseur doit fournir
-        public double LanderGravity;    // m/s², gravité à la surface de la destination
-        public double LanderTwr = 2;    // TWR minimal face à cette gravité
+        // Lander stage (0 = the payload lands by itself)
+        public double LanderDeltaV;     // m/s the lander must provide
+        public double LanderGravity;    // m/s², gravity at the destination's surface
+        public double LanderTwr = 2;    // minimum TWR against that gravity
         public string LanderBody = "";
-        public List<PartInfo> Legs = new List<PartInfo>();   // jambes d'atterrissage débloquées
+        public List<PartInfo> Legs = new List<PartInfo>();   // unlocked landing legs
 
-        public List<PartInfo> NoseCones = new List<PartInfo>();   // cônes de nez débloqués (haut des boosters)
-        public List<PartInfo> Couplers = new List<PartInfo>();    // coupleurs multiples débloqués (grappes de moteurs)
-        public string PayloadBottomSize = "";                     // profil du nœud du bas de la charge utile ("" = inconnu)
+        public List<PartInfo> NoseCones = new List<PartInfo>();   // unlocked nose cones (top of boosters)
+        public List<PartInfo> Couplers = new List<PartInfo>();    // unlocked multi-couplers (engine clusters)
+        public string PayloadBottomSize = "";                     // profile of the payload's bottom node ("" = unknown)
     }
 
     /// <summary>
-    /// Cherche, pour chaque variante (SSTO, deux étages, boosters à poudre, boosters liquides, asperges),
-    /// la combinaison de pièces débloquées la plus légère (ou la moins chère) qui fournit le Δv demandé.
-    /// Les quantités d'ergols sont d'abord continues, puis converties en vrais réservoirs.
+    /// Searches, for each variant (SSTO, two stages, solid boosters, liquid boosters, asparagus),
+    /// for the lightest (or cheapest) combination of unlocked parts that provides the requested delta-v.
+    /// Propellant quantities are first continuous, then converted into real tanks.
     /// </summary>
     public class LauncherDesigner
     {
         const double G0 = PartInfo.G0;
-        const int MaxEnginesPerStage = 2;    // étages supérieurs : un moteur à vide (deux au plus, comme Centaur)
-        const int MaxLowerEngines = 7;       // premier étage (grappe de moteurs)
-        const double MaxTankRatio = 0.2;     // masse à vide / masse d'ergols (≈ 0,125 pour les réservoirs du jeu de base)
-        const double TankRatioSlack = 1.5;  // tolérance par rapport au meilleur réservoir lors du choix des pièces
+        const int MaxEnginesPerStage = 2;    // upper stages: one vacuum engine (two at most, like Centaur)
+        const int MaxLowerEngines = 7;       // first stage (engine cluster)
+        const double MaxTankRatio = 0.2;     // dry mass / propellant mass (about 0.125 for stock tanks)
+        const double TankRatioSlack = 1.5;  // tolerance relative to the best tank when choosing parts
 
         class Mixture
         {
             public string Key;
             public List<PartInfo> Tanks = new List<PartInfo>();
-            public List<PartInfo> Adapters = new List<PartInfo>();   // réservoirs à deux diamètres (haut d'un étage plus large)
-            public List<string> Sizes = new List<string>();          // diamètres disponibles, du plus petit au plus grand
+            public List<PartInfo> Adapters = new List<PartInfo>();   // two-diameter tanks (top of a wider stage)
+            public List<string> Sizes = new List<string>();          // available diameters, from smallest to largest
         }
 
-        const int MaxTankParts = 6;   // au-delà, on passe au diamètre supérieur : base large, étages qui s'affinent
+        const int MaxTankParts = 6;   // beyond that, move to the next diameter up: wide base, narrowing stages
 
         readonly DesignRequest req;
         readonly Dictionary<string, Mixture> mixtures = new Dictionary<string, Mixture>();
@@ -168,7 +168,7 @@ namespace LaunchPlanner
         readonly List<PartInfo> decouplers = new List<PartInfo>();
         readonly Dictionary<PartInfo, string> engineMixture = new Dictionary<PartInfo, string>();
 
-        bool heightsKnown;   // l'inventaire vient du jeu : la hauteur d'empilement de chaque pièce est connue
+        bool heightsKnown;   // the inventory comes from the game: each part's stack height is known
 
         static bool IsNoseCone(PartInfo p)
         {
@@ -187,8 +187,8 @@ namespace LaunchPlanner
         readonly PartInfo separator;
 
         /// <summary>
-        /// Fusée de séparation débloquée : petit propulseur à poudre à fixer en surface, qui brûle quelques secondes.
-        /// Le Sepratron I est préféré, puis ce qui porte « sep » dans son nom, puis le plus léger.
+        /// Unlocked separation motor: small solid motor to attach on the surface, burning for a few seconds.
+        /// The Sepratron I is preferred, then anything with "sep" in its name, then the lightest.
         /// </summary>
         public static PartInfo PickSeparator(List<PartInfo> parts)
         {
@@ -197,8 +197,8 @@ namespace LaunchPlanner
             foreach (PartInfo p in parts)
             {
                 if (!p.Unlocked || p.Kind != PartKind.Booster || (p.Sizes ?? "").Trim() != "srf") continue;
-                // Une vraie fusée de séparation est minuscule : on écarte les « packs » de séparation longs comme un booster
-                // et les pièces retirées de leur mod.
+                // A real separation motor is tiny: we discard separation "packs" as long as a booster
+                // and parts removed from their mod.
                 if (p.WetMassT > 0.1 || p.Title.IndexOf("Deprecated", StringComparison.OrdinalIgnoreCase) >= 0) continue;
                 double burn = p.BurnTimeS;
                 if (p.ThrustVacKN <= 0 || p.ThrustVacKN > 100 || burn < 1 || burn > 15) continue;
@@ -210,13 +210,13 @@ namespace LaunchPlanner
         }
 
         /// <summary>
-        /// Nombre de fusées de séparation par booster : de quoi écarter le booster vide d'environ 12 m/s,
-        /// au moins une en haut et une en bas, toujours un nombre pair, au plus 8.
+        /// Number of separation motors per booster: enough to push the empty booster away at about 12 m/s,
+        /// at least one at the top and one at the bottom, always an even number, at most 8.
         /// </summary>
         public static int SeparatorCount(PartInfo sep, double boosterDryT)
         {
             if (sep == null) return 0;
-            double impulse = sep.ThrustVacKN * sep.BurnTimeS * 0.94;   // kN·s, inclinées de 20° vers l'arrière
+            double impulse = sep.ThrustVacKN * sep.BurnTimeS * 0.94;   // kN·s, tilted 20° rearward
             int n = impulse > 0 ? (int)Math.Ceiling(boosterDryT * 12 / impulse) : 2;
             n = Math.Max(2, n + (n & 1));
             return Math.Min(8, n);
@@ -233,7 +233,7 @@ namespace LaunchPlanner
             b.NoseMass = b.NoseCone != null ? b.NoseCone.DryMassT : 0;
         }
 
-        /// <summary>Cône de nez à la taille du haut du booster : le plus léger, comme ceux des vrais boosters.</summary>
+        /// <summary>Nose cone sized for the top of the booster: the lightest, like those of real boosters.</summary>
         PartInfo NoseCone(string size)
         {
             PartInfo best = null;
@@ -243,8 +243,8 @@ namespace LaunchPlanner
         }
 
         /// <summary>
-        /// Coupleur multiple qui porte exactement cette grappe sous un réservoir de ce diamètre : nœud du haut à la taille du
-        /// réservoir, nœuds du bas assez écartés pour les moteurs. Le plus léger s'il y en a plusieurs.
+        /// Multi-coupler that carries exactly this cluster under a tank of this diameter: top node sized to the
+        /// tank, bottom nodes spaced widely enough for the engines. The lightest if there are several.
         /// </summary>
         PartInfo Coupler(string size, PartInfo engine, int count)
         {
@@ -260,7 +260,7 @@ namespace LaunchPlanner
             return best;
         }
 
-        // ---------- Préparation des pièces ----------
+        // ---------- Part preparation ----------
 
         public static string SizeOf(PartInfo p)
         {
@@ -319,14 +319,14 @@ namespace LaunchPlanner
                 if (!p.Unlocked) continue;
                 if (p.Kind == PartKind.Tank)
                 {
-                    // Seulement de vrais réservoirs : on écarte les pièces dont le carburant n'est qu'un complément
-                    // (capsules, compartiments, jupes…), trop lourdes pour la quantité emportée.
+                    // Only real tanks: discard parts whose fuel is just a side feature
+                    // (capsules, compartments, skirts...), too heavy for the amount carried.
                     if (Propellant(p) <= 0 || p.DryMassT / Propellant(p) > MaxTankRatio * 1.3) continue;
-                    // Coiffes et pièces à un seul nœud d'empilement : rien ne peut se fixer dessous.
+                    // Fairings and single-stack-node parts: nothing can be attached underneath.
                     if (IsNoseCone(p) || (heightsKnown && p.HeightM <= 0)) continue;
-                    // Modèle nettement plus étroit que son profil : il casserait l'allure du lanceur (étage large sur étage fin).
+                    // Model clearly narrower than its profile: it would spoil the launcher's look (wide stage on a thin stage).
                     if (p.DiameterM > 0 && p.DiameterM < 0.8 * CraftBuilder.DiameterOf(SizeOf(p))) continue;
-                    // Les adaptateurs (plusieurs diamètres) ne s'empilent pas en série : ils servent seulement à raccorder deux étages.
+                    // Adapters (several diameters) are not stacked in series: they only join two stages.
                     bool adapter = StackSizes(p) == 2;
                     if (!adapter && (StackSizes(p) != 1 || p.DryMassT / Propellant(p) > MaxTankRatio)) continue;
                     List<string> names = new List<string>();
@@ -341,7 +341,7 @@ namespace LaunchPlanner
                     if (!mix.Sizes.Contains(SizeOf(p))) mix.Sizes.Add(SizeOf(p));
                 }
                 else if (p.Kind == PartKind.Decoupler && IsRealDecoupler(p)) decouplers.Add(p);
-                // Un propulseur à poudre qui brûle moins de 15 s (tour de sauvetage, fusée de séparation) n'est pas un booster.
+                // A solid motor that burns for less than 15 s (escape tower, separation motor) is not a booster.
                 else if (p.Kind == PartKind.Booster && p.ThrustAslKN > 0 && p.IspVac > 0 && Propellant(p) > 0 && p.BurnTimeS >= 15)
                     solidBoosters.Add(p);
             }
@@ -349,7 +349,7 @@ namespace LaunchPlanner
             foreach (PartInfo p in req.Parts)
             {
                 if (!p.Unlocked || p.Kind != PartKind.Engine || p.ThrustVacKN <= 0 || p.IspVac <= 0) continue;
-                if (SizeOf(p).Length == 0) continue;   // moteurs radiaux : pas pour un étage empilé
+                if (SizeOf(p).Length == 0) continue;   // radial engines: not for a stacked stage
                 string key = MixtureKey((p.Propellants ?? "").Split('+'));
                 if (!mixtures.ContainsKey(key)) continue;
                 engineMixture[p] = key;
@@ -364,7 +364,7 @@ namespace LaunchPlanner
             PruneBoosters();
         }
 
-        // Retire les moteurs dominés : même ergols et même taille, mais moins de poussée, moins d'Isp et plus lourds.
+        // Removes dominated engines: same propellants and size, but less thrust, less Isp and heavier.
         void Prune(List<PartInfo> engines, bool atmosphere)
         {
             List<PartInfo> keep = new List<PartInfo>();
@@ -425,7 +425,7 @@ namespace LaunchPlanner
             return sized.Count > 0 ? sized : mix.Tanks;
         }
 
-        // Rapport masse à vide / masse d'ergols du meilleur réservoir de ce type et de cette taille.
+        // Dry mass / propellant mass ratio of the best tank of this type and size.
         double TankRatio(string mixture, string size)
         {
             string key = mixture + "|" + size;
@@ -434,7 +434,7 @@ namespace LaunchPlanner
             return ratioCache[key] = ComputeTankRatio(mixture, size);
         }
 
-        // Réservoirs utilisables avec un moteur de cette taille : du même diamètre ou plus larges.
+        // Tanks usable with an engine of this size: same diameter or wider.
         List<PartInfo> TanksAtLeast(string mixture, string size)
         {
             Mixture mix;
@@ -451,8 +451,8 @@ namespace LaunchPlanner
         }
 
         /// <summary>
-        /// Meilleur rapport masse à vide / ergols parmi les réservoirs qui comptent : un petit réservoir exceptionnellement léger
-        /// (quelques centaines de kilos) ne doit pas faire croire que tout l'étage sera aussi léger.
+        /// Best dry mass / propellant ratio among the tanks that matter: a small, exceptionally light tank
+        /// (a few hundred kilos) must not make us believe the whole stage will be as light.
         /// </summary>
         static double BestRatio(List<PartInfo> tanks)
         {
@@ -489,8 +489,8 @@ namespace LaunchPlanner
         }
 
         /// <summary>
-        /// Beaucoup de pièces savent se détacher (boucliers thermiques, capsules, parachutes, coiffes…) : on ne garde que
-        /// celles rangées dans la catégorie « Couplage » de l'éditeur, ou, sans catégorie connue, celles qui s'appellent découpleur.
+        /// Many parts can detach (heat shields, capsules, parachutes, fairings...): we only keep
+        /// those in the editor's "Coupling" category, or, with no known category, those named decoupler.
         /// </summary>
         static bool IsRealDecoupler(PartInfo p)
         {
@@ -500,8 +500,8 @@ namespace LaunchPlanner
         }
 
         /// <summary>
-        /// Découpleur sous la charge utile : à la taille de son nœud du bas quand on la connaît (pas avec un atterrisseur,
-        /// où il se place sous l'atterrisseur), sinon à la taille du dernier étage.
+        /// Decoupler under the payload: sized to its bottom node when known (not with a lander,
+        /// where it goes under the lander), otherwise sized to the last stage.
         /// </summary>
         PartInfo PayloadDecoupler(string stageSize)
         {
@@ -526,7 +526,7 @@ namespace LaunchPlanner
             return best;
         }
 
-        // Les plus petits découpleurs radiaux cèdent sous de gros boosters : on prend le plus robuste qui reste léger.
+        // The smallest radial decouplers give way under big boosters: we take the sturdiest one that stays light.
         PartInfo RadialDecoupler()
         {
             PartInfo best = null;
@@ -548,10 +548,10 @@ namespace LaunchPlanner
 
         static double MassFlow(PartInfo e)
         {
-            return e.ThrustVacKN / (e.IspVac * G0);   // t/s, constant quelle que soit la pression
+            return e.ThrustVacKN / (e.IspVac * G0);   // t/s, constant regardless of pressure
         }
 
-        /// <summary>Calcule Δv, TWR et masses de chaque étage. Renvoie le Δv total, ou -1 si la configuration est incohérente.</summary>
+        /// <summary>Computes delta-v, TWR and masses of each stage. Returns the total delta-v, or -1 if the configuration is inconsistent.</summary>
         public double Simulate(LauncherDesign d)
         {
             double mass = req.PayloadMass;
@@ -583,7 +583,7 @@ namespace LaunchPlanner
                     s.Twr = liftThrust / (s.MassStart * req.HomeGravity);
                     if (b.Crossfeed)
                     {
-                        // Asperges : toutes les paires alimentent les moteurs, la paire extérieure se vide en premier.
+                        // Asparagus: all pairs feed the engines, the outer pair empties first.
                         for (int active = b.Count; active > 0; active -= 2)
                         {
                             double pairFuel = 2 * b.FuelEach;
@@ -594,11 +594,11 @@ namespace LaunchPlanner
                     }
                     else
                     {
-                        // Boosters indépendants : ils brûlent en même temps que le corps central puis sont largués.
+                        // Independent boosters: they burn at the same time as the core and are then dropped.
                         double tB = b.FuelEach / mdotB;
                         if (mdotC * tB > coreFuel)
                         {
-                            // Le corps central s'éteint le premier : les boosters finissent seuls, puis tout l'étage est largué.
+                            // The core shuts down first: the boosters finish alone, then the whole stage is dropped.
                             double tC = coreFuel / mdotC;
                             double m1 = mass - (mdotC + b.Count * mdotB) * tC;
                             dv += (thrC + b.Count * thrB) / (mdotC + b.Count * mdotB) * Math.Log(mass / m1);
@@ -617,7 +617,7 @@ namespace LaunchPlanner
                         coreFuel -= mdotC * tB;
                         mass = m1b - b.Count * b.DryEach;
                     }
-                    // Poussée du corps central entre vide et niveau de la mer, à mi-montée.
+                    // Core thrust between vacuum and sea level, mid-ascent.
                     double coreThrust = s.EngineCount * (atmo ? (s.Engine.ThrustAslKN + s.Engine.ThrustVacKN) / 2 : s.Engine.ThrustVacKN);
                     s.CoreTwr = coreThrust / (mass * req.HomeGravity);
                     s.CoreStartDeltaV = total + dv;
@@ -670,50 +670,50 @@ namespace LaunchPlanner
             return ConstraintProblem(d) == null;
         }
 
-        /// <summary>La première contrainte non respectée, ou null.</summary>
-        // Pendant la recherche, on exige un peu plus de TWR : l'arrondi aux vrais réservoirs ajoute de la masse.
+        /// <summary>The first constraint not met, or null.</summary>
+        // During the search, a little more TWR is required: rounding to real tanks adds mass.
         double twrMargin = 1.04;
 
         string ConstraintProblem(LauncherDesign d)
         {
-            if (d.Stages.Count == 0) return "aucun étage";
-            if (d.Stages[0].Twr < req.MinLiftoffTwr * twrMargin) return string.Format("TWR au décollage trop faible ({0:0.00})", d.Stages[0].Twr);
+            if (d.Stages.Count == 0) return "no stage";
+            if (d.Stages[0].Twr < req.MinLiftoffTwr * twrMargin) return string.Format("liftoff TWR too low ({0:0.00})", d.Stages[0].Twr);
             for (int i = 1; i < d.Stages.Count; i++)
                 if (d.Stages[i].Twr < MinTwr(d.Stages[i].StartDeltaV) * twrMargin)
-                    return string.Format("TWR de l'étage {0} trop faible ({1:0.00})", i + 1, d.Stages[i].Twr);
+                    return string.Format("stage {0} TWR too low ({1:0.00})", i + 1, d.Stages[i].Twr);
             foreach (StagePlan s in d.Stages)
                 if (s.Boosters != null && s.Boosters.Count > 0 && s.CoreTwr < MinTwr(s.CoreStartDeltaV) * twrMargin)
-                    return string.Format("TWR du corps central trop faible après le largage des boosters ({0:0.00})", s.CoreTwr);
-            // Montage possible : la grappe tient sous le plus large réservoir débloqué, les boosters tiennent autour du corps.
+                    return string.Format("core TWR too low after booster drop ({0:0.00})", s.CoreTwr);
+            // Mounting is possible: the cluster fits under the widest unlocked tank, the boosters fit around the core.
             foreach (StagePlan s in d.Stages)
             {
                 if (s.EngineCount > 1 && !ClusterFits(s.Mixture, s.Engine, s.EngineCount))
-                    return string.Format("{0} moteurs ne tiennent pas sous le plus large réservoir débloqué", s.EngineCount);
+                    return string.Format("{0} engines do not fit under the widest unlocked tank", s.EngineCount);
                 BoosterPlan b = s.Boosters;
                 if (b != null && b.Count > 0)
                 {
                     double core = CraftBuilder.DiameterOf(LargestSize(s.Mixture, s.Size));
                     double each = CraftBuilder.DiameterOf(SizeOf(b.Part));
                     if (b.Count * each > Math.PI * (core + each) * 0.95)
-                        return string.Format("{0} boosters ne tiennent pas autour du corps central", b.Count);
+                        return string.Format("{0} boosters do not fit around the core", b.Count);
                 }
             }
-            // Un premier étage qui ne fournit presque rien n'est qu'un SSTO déguisé.
+            // A first stage that provides almost nothing is just a disguised SSTO.
             if (d.Stages.Count > 1 && d.Stages[0].DeltaV < MinFirstStageShare * req.TargetDeltaV)
-                return "premier étage trop petit";
-            // Un étage supérieur qui n'apporte presque rien ne vaut pas son découpleur (sur les vrais lanceurs, 30 à 50 %).
+                return "first stage too small";
+            // An upper stage that adds almost nothing is not worth its decoupler (on real launchers, 30 to 50%).
             for (int i = 1; i < d.Stages.Count; i++)
-                if (d.Stages[i].DeltaV < 0.15 * req.TargetDeltaV) return "étage supérieur trop petit";
+                if (d.Stages[i].DeltaV < 0.15 * req.TargetDeltaV) return "upper stage too small";
             return null;
         }
 
         /// <summary>
-        /// TWR minimal d'un étage supérieur : un étage allumé en pleine montée doit encore lutter contre la gravité,
-        /// un étage allumé une fois en orbite peut être poussif.
+        /// Minimum TWR of an upper stage: a stage lit mid-ascent must still fight gravity,
+        /// a stage lit once in orbit can be sluggish.
         /// </summary>
         double MinTwr(double startDeltaV)
         {
-            // De 0,9 à mi-montée jusqu'au minimum choisi une fois la vitesse orbitale atteinte, sans palier.
+            // From 0.9 mid-ascent down to the chosen minimum once orbital speed is reached, with no step.
             double x = (startDeltaV / req.AscentDeltaV - 0.5) / 0.5;
             if (!req.HomeAtmosphere) x = startDeltaV / (req.AscentDeltaV * 0.5);
             x = Math.Max(0, Math.Min(1, x));
@@ -722,8 +722,8 @@ namespace LaunchPlanner
         }
 
         /// <summary>
-        /// Masse (ou coût) à minimiser. Chaque moteur en plus d'un par étage coûte 2 % : une grappe ne l'emporte sur un seul
-        /// gros moteur que si elle est nettement plus efficace.
+        /// Mass (or cost) to minimize. Each engine beyond one per stage costs 2%: a cluster only beats a single
+        /// big engine if it is clearly more efficient.
         /// </summary>
         double Score(LauncherDesign d)
         {
@@ -734,7 +734,7 @@ namespace LaunchPlanner
 
         const double ClusterPenalty = 0.02;
 
-        // ---------- Construction des étages ----------
+        // ---------- Stage construction ----------
 
         StagePlan MakeStage(PartInfo engine, int count, double fuel, bool withDecoupler)
         {
@@ -771,7 +771,7 @@ namespace LaunchPlanner
             return largest;
         }
 
-        /// <summary>Plus petit diamètre de réservoir sous lequel tient la grappe de moteurs.</summary>
+        /// <summary>Smallest tank diameter under which the engine cluster fits.</summary>
         string ClusterSize(string mixture, PartInfo engine, int count)
         {
             string size = SizeOf(engine);
@@ -790,16 +790,16 @@ namespace LaunchPlanner
             BoosterPlan b = s.Boosters;
             if (b != null && !b.Solid)
             {
-                b.Fuel = fuel / Math.Max(1, s.EngineCount);   // un booster liquide = un moteur du corps central et sa part d'ergols
+                b.Fuel = fuel / Math.Max(1, s.EngineCount);   // a liquid booster = one core engine and its share of propellant
                 b.TankDry = b.Fuel * TankRatio(b.Mixture, SizeOf(b.Part));
             }
         }
 
-        /// <summary>Trouve la quantité minimale d'ergols du premier étage qui atteint le Δv visé.</summary>
+        /// <summary>Finds the minimum first-stage propellant quantity that reaches the target delta-v.</summary>
         bool SolveFirstStage(LauncherDesign d, bool checkTwr = true)
         {
             StagePlan s = d.Stages[0];
-            // Le TWR au décollage baisse quand on ajoute des ergols : s'il est déjà trop faible à vide, inutile de chercher.
+            // Liftoff TWR drops as propellant is added: if it is already too low when empty, there is no point searching.
             SetFuel(s, 0.001);
             Simulate(d);
             if (checkTwr && s.Twr < req.MinLiftoffTwr) return false;
@@ -828,7 +828,7 @@ namespace LaunchPlanner
             public double DeltaV;
         }
 
-        // Étages supérieurs possibles (Δv, masse) ; on ne garde que ceux qui ne sont pas dominés.
+        // Possible upper stages (delta-v, mass); only the non-dominated ones are kept.
         List<Upper> UpperFront()
         {
             List<Upper> all = new List<Upper>();
@@ -853,7 +853,7 @@ namespace LaunchPlanner
             foreach (Upper u in all)
                 if (u.DeltaV > bestDv + 25) { front.Add(u); bestDv = u.DeltaV; }
 
-            // Pour garder un temps de calcul raisonnable, on échantillonne le front.
+            // To keep computation time reasonable, the front is sampled.
             if (front.Count > 24)
             {
                 List<Upper> sample = new List<Upper>();
@@ -868,12 +868,12 @@ namespace LaunchPlanner
             return new LauncherDesign { Variant = variant, Description = description };
         }
 
-        // Meilleurs candidats de la variante en cours : si l'arrondi aux vrais réservoirs fait échouer le premier,
-        // on essaie les suivants.
+        // Best candidates of the current variant: if rounding to real tanks makes the first one fail,
+        // the next ones are tried.
         readonly List<LauncherDesign> pool = new List<LauncherDesign>();
         const int PoolSize = 12;
 
-        // Raisons de rejet pendant la recherche de la variante en cours, pour expliquer un échec.
+        // Rejection reasons during the search of the current variant, to explain a failure.
         readonly Dictionary<string, int> rejections = new Dictionary<string, int>();
 
         LauncherDesign Better(LauncherDesign best, LauncherDesign candidate)
@@ -893,7 +893,7 @@ namespace LaunchPlanner
             bool forBest = best == null || score < Score(best);
             if (!forPool && !forBest) return best;
             LauncherDesign copy = Clone(candidate);
-            Simulate(copy);   // recalcule masses, coût et Δv sur la copie
+            Simulate(copy);   // recomputes masses, cost and delta-v on the copy
             if (forPool)
             {
                 pool.Add(copy);
@@ -927,13 +927,13 @@ namespace LaunchPlanner
             return c;
         }
 
-        // ---------- Variantes ----------
+        // ---------- Variants ----------
 
         public string Stats
         {
             get
             {
-                return string.Format("{0} moteurs de décollage, {1} moteurs d'étage supérieur, {2} propulseurs à poudre, {3} types d'ergols",
+                return string.Format("{0} liftoff engines, {1} upper-stage engines, {2} solid motors, {3} propellant types",
                     lowerEngines.Count, upperEngines.Count, solidBoosters.Count, mixtures.Count);
             }
         }
@@ -955,7 +955,7 @@ namespace LaunchPlanner
             int legCount = legs != null ? LanderLegs : 0;
             double mass = req.PayloadMass, height = req.PayloadHeight, width = req.PayloadWidth;
             int parts = req.PayloadParts;
-            // Le lanceur emporte la charge utile et son atterrisseur.
+            // The launcher carries the payload and its lander.
             req.PayloadMass += lander.TotalMass + legCount * (legs != null ? legs.DryMassT : 0);
             req.PayloadHeight += TanksHeight(lander.Tanks) + HeightOf(lander.Engine);
             req.PayloadWidth = Math.Max(req.PayloadWidth, CraftBuilder.DiameterOf(lander.Size) + 1);
@@ -982,21 +982,21 @@ namespace LaunchPlanner
 
         static readonly string[][] Variants =
         {
-            new[] { "SSTO", "Un seul étage, sans largage." },
-            new[] { "Deux étages", "Deux étages empilés, sans boosters." },
-            new[] { "Boosters à poudre", "Deux étages et des propulseurs à poudre largués en vol." },
-            new[] { "Boosters liquides", "Deux étages et des boosters liquides largués ensemble." },
-            new[] { "Asperges", "Boosters liquides largués 2 par 2 ; chaque paire alimente le reste du lanceur avant d'être larguée." },
+            new[] { "SSTO", "A single stage, no staging." },
+            new[] { "Two stages", "Two stacked stages, no boosters." },
+            new[] { "Solid boosters", "Two stages and solid motors dropped in flight." },
+            new[] { "Liquid boosters", "Two stages and liquid boosters dropped together." },
+            new[] { "Asparagus", "Liquid boosters dropped 2 by 2; each pair feeds the rest of the launcher before being dropped." },
         };
 
-        // ---------- Étage atterrisseur ----------
+        // ---------- Lander stage ----------
 
         const int LanderLegs = 4;
         const int MaxLanderEngines = 4;
 
         /// <summary>
-        /// Jambes d'atterrissage : la plus légère qui porte la masse posée (environ 0,4 % de cette masse par jambe,
-        /// comme les jambes du jeu de base), sinon la plus robuste.
+        /// Landing legs: the lightest one that supports the landed mass (about 0.4% of that mass per leg,
+        /// like the stock legs), otherwise the sturdiest.
         /// </summary>
         PartInfo PickLegs(double landedMass)
         {
@@ -1010,14 +1010,14 @@ namespace LaunchPlanner
         }
 
         /// <summary>
-        /// Étage qui pose la charge utile et assure ce qu'elle ne peut pas faire seule (descente, puis remontée et retour
-        /// si la mission en comporte) : un ou quelques moteurs à vide, poussée suffisante face à la gravité de la destination,
-        /// ergols qui se conservent (pas d'hydrogène liquide, qui s'évapore pendant le trajet).
+        /// Stage that lands the payload and handles what it cannot do alone (descent, then ascent and return
+        /// if the mission includes them): one or a few vacuum engines, enough thrust against the destination's gravity,
+        /// storable propellants (no liquid hydrogen, which boils off during the trip).
         /// </summary>
         StagePlan DesignLander(out PartInfo legs, out string problem)
         {
             legs = null;
-            problem = "Aucun moteur débloqué ne peut poser la charge utile sur " + req.LanderBody + ".";
+            problem = "No unlocked engine can land the payload on " + req.LanderBody + ".";
             StagePlan best = null;
             double bestScore = double.MaxValue;
             bool tooWeak = false;
@@ -1054,16 +1054,16 @@ namespace LaunchPlanner
             }
             if (best == null)
             {
-                if (tooWeak) problem = string.Format("Aucun moteur débloqué n'a assez de poussée pour poser la charge utile sur {0} (TWR {1:0.#} demandé).",
+                if (tooWeak) problem = string.Format("No unlocked engine has enough thrust to land the payload on {0} (TWR {1:0.#} required).",
                     req.LanderBody, req.LanderTwr);
                 return null;
             }
 
-            // Vrais réservoirs : on augmente un peu les ergols jusqu'à couvrir le Δv demandé.
+            // Real tanks: the propellant is increased slightly until the required delta-v is covered.
             double wanted = best.Fuel;
             for (int attempt = 0; attempt < 8; attempt++)
             {
-                // Assez large pour porter la charge utile : un atterrisseur est trapu.
+                // Wide enough to carry the payload: a lander is squat.
                 double minD = Math.Max(CraftBuilder.DiameterOf(ClusterSize(best.Mixture, best.Engine, best.EngineCount)), 0.5 * req.PayloadWidth);
                 best.Size = SquatSize(wanted, best.Mixture, minD) ??
                     ChooseSize(wanted, best.Mixture, best.Engine, best.EngineCount, minD, double.MaxValue);
@@ -1079,11 +1079,11 @@ namespace LaunchPlanner
             best.Twr = best.EngineCount * best.Engine.ThrustVacKN / (best.MassStart * req.LanderGravity);
             best.Cost = best.EngineCount * best.Engine.Cost + best.Fuel * TankCostPerTonne(best.Mixture, best.Size)
                 + LanderLegs * (legs != null ? legs.Cost : 0);
-            if (best.Tanks.Count == 0) { problem = "Aucun réservoir débloqué pour l'atterrisseur."; return null; }
+            if (best.Tanks.Count == 0) { problem = "No unlocked tank for the lander."; return null; }
             return best;
         }
 
-        /// <summary>Plus petit diamètre où les ergols tiennent en deux réservoirs au plus : un atterrisseur trapu, pas une tour.</summary>
+        /// <summary>Smallest diameter where the propellant fits in at most two tanks: a squat lander, not a tower.</summary>
         string SquatSize(double fuel, string mixture, double minD)
         {
             Mixture mix;
@@ -1113,16 +1113,16 @@ namespace LaunchPlanner
             Trace("front " + front.Count);
 
             pool.Clear(); rejections.Clear(); Ssto();
-            result.Add(Finish("SSTO", "Un seul étage, sans largage."));
+            result.Add(Finish("SSTO", "A single stage, no staging."));
             pool.Clear(); rejections.Clear(); TwoStages(front, null);
-            result.Add(Finish("Deux étages", "Deux étages empilés, sans boosters."));
+            result.Add(Finish("Two stages", "Two stacked stages, no boosters."));
             pool.Clear(); rejections.Clear(); TwoStages(front, "solid");
-            result.Add(Finish("Boosters à poudre", "Deux étages et des propulseurs à poudre largués en vol."));
+            result.Add(Finish("Solid boosters", "Two stages and solid motors dropped in flight."));
             pool.Clear(); rejections.Clear(); TwoStages(front, "liquid");
-            result.Add(Finish("Boosters liquides", "Deux étages et des boosters liquides largués ensemble."));
+            result.Add(Finish("Liquid boosters", "Two stages and liquid boosters dropped together."));
             pool.Clear(); rejections.Clear(); TwoStages(front, "asparagus");
-            result.Add(Finish("Asperges",
-                "Boosters liquides largués 2 par 2 ; chaque paire alimente le reste du lanceur avant d'être larguée."));
+            result.Add(Finish("Asparagus",
+                "Liquid boosters dropped 2 by 2; each pair feeds the rest of the launcher before being dropped."));
             Trace("fin");
             return result;
         }
@@ -1150,7 +1150,7 @@ namespace LaunchPlanner
 
         class Core
         {
-            public List<Upper> Uppers = new List<Upper>();   // les meilleurs étages supérieurs pour ce corps central
+            public List<Upper> Uppers = new List<Upper>();   // the best upper stages for this core
             public List<double> Scores = new List<double>();
             public PartInfo Engine;
             public int Count;
@@ -1167,10 +1167,10 @@ namespace LaunchPlanner
             }
         }
         const int UppersPerCore = 3;
-        const double MinCoreTwr = 0.5;   // en dessous, même avec des boosters le corps central ne suivrait pas
+        const double MinCoreTwr = 0.5;   // below this, even with boosters the core could not keep up
 
-        // Meilleurs couples (étage supérieur, premier étage) sans tenir compte du TWR au décollage :
-        // les boosters servent justement à le corriger.
+        // Best pairs (upper stage, first stage) ignoring liftoff TWR:
+        // the boosters are precisely there to fix it.
         readonly List<Core> cores = new List<Core>();
         const int CoresForBoosters = 40;
         const double MinFirstStageShare = 0.25;
@@ -1190,7 +1190,7 @@ namespace LaunchPlanner
                             if (d.Stages.Count == 0 || !UpperStagesOk(d)) continue;
                             best = Better(best, d);
                             if (d.Stages[0].DeltaV < MinFirstStageShare * req.TargetDeltaV || d.Stages[0].Twr < MinCoreTwr) continue;
-                            // Quelques étages supérieurs par moteur du premier étage, pour garder des corps centraux variés.
+                            // A few upper stages per first-stage engine, to keep varied cores.
                             Core same = cores.Find(c => c.Engine == e && c.Count == n);
                             if (same == null) cores.Add(same = new Core { Engine = e, Count = n });
                             same.Add(u, Score(d));
@@ -1200,7 +1200,7 @@ namespace LaunchPlanner
                 return best;
             }
 
-            Trace(boosterKind + " : " + cores.Count + " corps centraux");
+            Trace(boosterKind + ": " + cores.Count + " cores");
             foreach (Core core in cores)
             foreach (Upper u in core.Uppers)
             {
@@ -1209,7 +1209,7 @@ namespace LaunchPlanner
                 if (boosterKind == "solid")
                 {
                     foreach (PartInfo srb in solidBoosters)
-                        for (int c = 2; c <= 4; c += 2)   // comme Ariane 5, Atlas V, H-IIA : 2 ou 4 boosters
+                        for (int c = 2; c <= 4; c += 2)   // like Ariane 5, Atlas V, H-IIA: 2 or 4 boosters
                             best = Better(best, Build(u, e, n, new BoosterPlan
                             {
                                 Count = c, Solid = true, Part = srb, Decoupler = radial,
@@ -1245,12 +1245,12 @@ namespace LaunchPlanner
             return d;
         }
 
-        // ---------- Conversion en vraies pièces ----------
+        // ---------- Conversion to real parts ----------
 
-        /// <summary>Remplace les quantités continues d'ergols par de vrais réservoirs, du haut vers le bas.</summary>
+        /// <summary>Replaces the continuous propellant quantities with real tanks, from top to bottom.</summary>
         LauncherDesign Finish(string variant, string description)
         {
-            Trace(variant + " : " + pool.Count + " candidats");
+            Trace(variant + ": " + pool.Count + " candidates");
             if (pool.Count == 0)
             {
                 LauncherDesign none = NewDesign(variant, description);
@@ -1278,10 +1278,10 @@ namespace LaunchPlanner
             StagePlan first = d.Stages[0];
             double[] fuels = new double[d.Stages.Count];
             for (int i = 0; i < fuels.Length; i++) fuels[i] = d.Stages[i].Fuel;
-            // Trop haut pour le VAB : on reprend avec des réservoirs plus larges, donc moins hauts.
+            // Too tall for the VAB: start over with wider, hence shorter, tanks.
             for (widen = 0; widen <= MaxWiden; widen++)
             {
-                // Du haut vers le bas : chaque étage est au moins aussi large que celui qu'il porte.
+                // Top to bottom: each stage is at least as wide as the one it carries.
                 for (int i = d.Stages.Count - 1; i >= 1; i--)
                 {
                     d.Stages[i].Fuel = fuels[i];
@@ -1312,7 +1312,7 @@ namespace LaunchPlanner
             twrMargin = 1;
             string problem = ConstraintProblem(d);
             twrMargin = 1.04;
-            if (d.DeltaV < req.TargetDeltaV - 1) problem = string.Format("Δv insuffisant une fois les réservoirs arrondis ({0:0} m/s)", d.DeltaV);
+            if (d.DeltaV < req.TargetDeltaV - 1) problem = string.Format("insufficient Δv once the tanks are rounded ({0:0} m/s)", d.DeltaV);
             if (problem == null) problem = SiteProblem(d);
             d.Valid = problem == null;
             if (!d.Valid) d.Problem = problem;
@@ -1320,13 +1320,13 @@ namespace LaunchPlanner
             {
                 StagePlan s = d.Stages[i];
                 if (s.Decoupler == null && s != first)
-                    d.Notes.Add("Aucun découpleur débloqué à la bonne taille.");
+                    d.Notes.Add("No unlocked decoupler of the right size.");
                 if (s.EngineCount > 1 && s.Coupler == null && ClusterCapacity(CraftBuilder.DiameterOf(s.Size), CraftBuilder.DiameterOf(SizeOf(s.Engine))) < s.EngineCount)
-                    d.Notes.Add(string.Format("Étage {0} : {1} moteurs se chevauchent sous un réservoir de {2} (pas de réservoir débloqué plus large).",
+                    d.Notes.Add(string.Format("Stage {0}: {1} engines overlap under a {2} tank (no wider tank unlocked).",
                         i + 1, s.EngineCount, Diameter(s.Size)));
                 if (i + 1 < d.Stages.Count && s.Size != d.Stages[i + 1].Size &&
                     (s.Tanks.Count == 0 || StackSizes(s.Tanks[0].Tank) != 2))
-                    d.Notes.Add(string.Format("Aucun réservoir adaptateur {0} → {1} débloqué : ajoute un adaptateur structurel entre les étages {2} et {3}.",
+                    d.Notes.Add(string.Format("No {0} → {1} adapter tank unlocked: add a structural adapter between stages {2} and {3}.",
                         Diameter(s.Size), Diameter(d.Stages[i + 1].Size), i + 1, i + 2));
             }
             return d;
@@ -1334,30 +1334,30 @@ namespace LaunchPlanner
 
         string Unavailable(string variant)
         {
-            if (variant == "Boosters à poudre" && solidBoosters.Count == 0) return "Aucun propulseur à poudre débloqué.";
-            if (lowerEngines.Count == 0) return "Aucun moteur utilisable au décollage n'est débloqué.";
+            if (variant == "Solid boosters" && solidBoosters.Count == 0) return "No solid motor unlocked.";
+            if (lowerEngines.Count == 0) return "No engine usable at liftoff is unlocked.";
             string main = null;
             int count = 0;
             foreach (KeyValuePair<string, int> r in rejections)
                 if (r.Value > count) { count = r.Value; main = r.Key; }
-            string text = "Aucune combinaison de pièces débloquées n'atteint le Δv demandé" +
-                (main != null ? " ; le plus souvent : " + main + "." : " avec un TWR suffisant.");
-            // Sans boosters, la poussée au décollage est plafonnée par le nombre de moteurs qui tiennent sous le plus large réservoir.
-            if (main == "TWR au décollage trop faible" && (variant == "SSTO" || variant == "Deux étages"))
+            string text = "No combination of unlocked parts reaches the requested Δv" +
+                (main != null ? "; most often: " + main + "." : " with a sufficient TWR.");
+            // Without boosters, liftoff thrust is capped by the number of engines that fit under the widest tank.
+            if (main == "liftoff TWR too low" && (variant == "SSTO" || variant == "Two stages"))
             {
                 PartInfo engine;
                 int engines;
                 double thrust = MaxCoreThrust(out engine, out engines);
                 if (engine != null)
-                    text += string.Format(" Sans boosters, la poussée au décollage plafonne à {0:0} kN ({1} × {2} sous le plus large réservoir débloqué, Ø {3}), " +
-                        "soit au plus {4:0} t au décollage : il faut des boosters, ou débloquer des réservoirs plus larges.",
+                    text += string.Format(" Without boosters, liftoff thrust is capped at {0:0} kN ({1} × {2} under the widest unlocked tank, Ø {3}), " +
+                        "i.e. at most {4:0} t at liftoff: boosters are needed, or unlock wider tanks.",
                         thrust, engines, engine.Title, Diameter(LargestSize(engineMixture[engine], SizeOf(engine))),
                         thrust / (req.HomeGravity * req.MinLiftoffTwr));
             }
             return text;
         }
 
-        /// <summary>Plus forte poussée au sol d'un premier étage sans boosters : moteur × nombre qui tient sous le plus large réservoir.</summary>
+        /// <summary>Highest sea-level thrust of a first stage without boosters: engine × the number that fits under the widest tank.</summary>
         double MaxCoreThrust(out PartInfo engine, out int count)
         {
             engine = null;
@@ -1376,10 +1376,10 @@ namespace LaunchPlanner
 
         public static string Diameter(string size)
         {
-            return CraftBuilder.DiameterOf(size).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture).Replace('.', ',') + " m";
+            return CraftBuilder.DiameterOf(size).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + " m";
         }
 
-        /// <summary>Combien de moteurs de cette taille tiennent sous un réservoir de ce diamètre (grappe, coupleur multiple).</summary>
+        /// <summary>How many engines of this size fit under a tank of this diameter (cluster, multi-coupler).</summary>
         static int ClusterCapacity(double tankDiameter, double engineDiameter)
         {
             if (tankDiameter < engineDiameter - 0.01) return 0;
@@ -1388,9 +1388,9 @@ namespace LaunchPlanner
         }
 
         /// <summary>
-        /// Remplace les ergols de l'étage par de vrais réservoirs. Le diamètre est le plus petit qui accueille les moteurs,
-        /// reste au moins aussi large que l'étage du dessus et tient en peu de réservoirs ; si l'étage du dessus est plus étroit,
-        /// un réservoir adaptateur coiffe l'étage.
+        /// Replaces the stage's propellant with real tanks. The diameter is the smallest that accommodates the engines,
+        /// stays at least as wide as the stage above and fits in few tanks; if the stage above is narrower,
+        /// an adapter tank caps the stage.
         /// </summary>
         void Quantize(LauncherDesign d, int index)
         {
@@ -1417,7 +1417,7 @@ namespace LaunchPlanner
             s.TankDry = dry + td;
             if (index > 0)
             {
-                // Le découpleur sous un étage supérieur prend son diamètre.
+                // The decoupler under an upper stage takes its diameter.
                 s.Decoupler = StackDecoupler(s.Size) ?? s.Decoupler;
                 s.DecouplerMass = s.Decoupler != null ? s.Decoupler.DryMassT : 0.05;
             }
@@ -1426,7 +1426,7 @@ namespace LaunchPlanner
             if (b != null && !b.Solid)
             {
                 string bs = ChooseSize(b.Fuel, b.Mixture, b.Part, 1, 0, CraftBuilder.DiameterOf(s.Size));
-                // Un booster plus haut que le corps central dépasserait dessous : on l'élargit jusqu'à ce qu'il tienne.
+                // A booster taller than the core would stick out below: widen it until it fits.
                 double coreHeight = TanksHeight(s.Tanks) + HeightOf(s.Engine);
                 Mixture bm;
                 if (heightsKnown && coreHeight > 0 && mixtures.TryGetValue(b.Mixture, out bm))
@@ -1457,10 +1457,10 @@ namespace LaunchPlanner
                 if (ClusterCapacity(dia, engineD) < engines) continue;
                 sizes.Add(size);
             }
-            // Rien ne convient (pas de réservoir assez large) : le plus large disponible.
+            // Nothing fits (no tank wide enough): the widest available.
             if (sizes.Count == 0) return mix.Sizes[mix.Sizes.Count - 1];
-            // Parmi les diamètres qui tiennent en peu de réservoirs, celui qui ajoute le moins de masse inutile
-            // (masse à vide, ergols en trop une fois arrondis aux vrais réservoirs, et un peu par pièce).
+            // Among the diameters that fit in few tanks, the one that adds the least useless mass
+            // (dry mass, excess propellant once rounded to real tanks, and a little per part).
             int chosen = -1, fewest = int.MaxValue, fewestAt = 0;
             double best = double.MaxValue;
             for (int i = 0; i < sizes.Count; i++)
@@ -1469,7 +1469,7 @@ namespace LaunchPlanner
                 int parts = TankParts(Fill(fuel, mixture, sizes[i], out got, out dry));
                 if (parts < fewest) { fewest = parts; fewestAt = i; }
                 if (parts > MaxTankParts) continue;
-                // Un étage plus large que nécessaire pèse peu, mais l'allure fusée veut des étages qui s'affinent vers le haut.
+                // A stage wider than necessary weighs little, but a rocket look wants stages that narrow toward the top.
                 double score = FillScore(fuel, got, dry, parts) + 0.03 * fuel * i;
                 if (score < best - 1e-9) { best = score; chosen = i; }
             }
@@ -1477,12 +1477,12 @@ namespace LaunchPlanner
             return sizes[Math.Min(chosen + widen, sizes.Count - 1)];
         }
 
-        // ---------- Encombrement (VAB et pas de tir) ----------
+        // ---------- Size (VAB and launch pad) ----------
 
         const int MaxWiden = 3;
-        int widen;   // crans de diamètre ajoutés quand le lanceur est trop haut
+        int widen;   // diameter steps added when the launcher is too tall
 
-        /// <summary>Hauteur d'empilement d'une pièce ; estimée d'après sa masse quand le jeu ne la donne pas.</summary>
+        /// <summary>Stack height of a part; estimated from its mass when the game does not provide it.</summary>
         static double HeightOf(PartInfo p)
         {
             if (p == null) return 0;
@@ -1490,7 +1490,7 @@ namespace LaunchPlanner
             double dia = CraftBuilder.DiameterOf(SizeOf(p));
             if (p.Kind == PartKind.Decoupler) return 0.4;
             if (p.Kind == PartKind.Engine) return 1.2 * dia;
-            double density = p.Kind == PartKind.Booster ? 1.6 : 1.0;   // t/m³ : ordre de grandeur des pièces du jeu
+            double density = p.Kind == PartKind.Booster ? 1.6 : 1.0;   // t/m³: order of magnitude of stock parts
             foreach (ResourceAmount r in p.Resources)
                 if (r.Name == "LqdHydrogen") density = 0.4;
             return p.WetMassT / (Math.PI * dia * dia / 4 * density);
@@ -1510,7 +1510,7 @@ namespace LaunchPlanner
             return n;
         }
 
-        /// <summary>Hauteur, largeur et nombre de pièces du lanceur assemblé, charge utile comprise.</summary>
+        /// <summary>Height, width and part count of the assembled launcher, payload included.</summary>
         void Measure(LauncherDesign d)
         {
             AssignBoosterParts(d);
@@ -1532,7 +1532,7 @@ namespace LaunchPlanner
                 {
                     double bh = (b.Solid ? HeightOf(b.Part) : TanksHeight(b.Tanks) + HeightOf(b.Part)) + HeightOf(b.NoseCone);
                     string bs = b.Solid || b.Tanks.Count == 0 ? SizeOf(b.Part) : SizeOf(b.Tanks[0].Tank);
-                    boosterTop = Math.Max(boosterTop, bh);   // les boosters sont alignés sur le bas du premier étage
+                    boosterTop = Math.Max(boosterTop, bh);   // the boosters are aligned with the bottom of the first stage
                     width = Math.Max(width, dia + 2 * CraftBuilder.DiameterOf(bs) + 0.2);
                     parts += b.Count * ((b.Solid ? 0 : TankParts(b.Tanks)) + 1 + (b.Decoupler != null ? 1 : 0) + b.SeparatorsEach + (b.Crossfeed ? 1 : 0) + (b.NoseCone != null ? 1 : 0));
                 }
@@ -1544,21 +1544,21 @@ namespace LaunchPlanner
 
         static string Metres(double m)
         {
-            return m.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture).Replace('.', ',') + " m";
+            return m.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " m";
         }
 
-        /// <summary>Ce qui empêche de construire ou de lancer ce lanceur avec les bâtiments actuels, ou null.</summary>
+        /// <summary>What prevents building or launching this launcher with the current buildings, or null.</summary>
         string SiteProblem(LauncherDesign d)
         {
             Measure(d);
             if (req.MaxHeight > 0 && d.HeightM > req.MaxHeight)
-                return string.Format("trop haut : {0} pour {1} autorisés (améliore le pas de tir ou allège la charge utile)", Metres(d.HeightM), Metres(req.MaxHeight));
+                return string.Format("too tall: {0} against {1} allowed (upgrade the launch pad or lighten the payload)", Metres(d.HeightM), Metres(req.MaxHeight));
             if (req.MaxWidth > 0 && d.WidthM > req.MaxWidth)
-                return string.Format("trop large : {0} pour {1} autorisés", Metres(d.WidthM), Metres(req.MaxWidth));
+                return string.Format("too wide: {0} against {1} allowed", Metres(d.WidthM), Metres(req.MaxWidth));
             if (req.MaxParts > 0 && d.PartCount > req.MaxParts)
-                return string.Format("trop de pièces : {0} pour {1} autorisées par le VAB", d.PartCount, req.MaxParts);
+                return string.Format("too many parts: {0} against {1} allowed by the VAB", d.PartCount, req.MaxParts);
             if (req.MaxMass > 0 && d.TotalMass > req.MaxMass)
-                return string.Format("trop lourd pour le pas de tir : {0:0.#} t pour {1:0.#} t autorisées", d.TotalMass, req.MaxMass);
+                return string.Format("too heavy for the launch pad: {0:0.#} t against {1:0.#} t allowed", d.TotalMass, req.MaxMass);
             return null;
         }
 
@@ -1578,15 +1578,15 @@ namespace LaunchPlanner
             list.Add(new TankUse { Tank = tank, Count = 1 });
         }
 
-        /// <summary>Choisit des réservoirs pour au moins `fuel` tonnes d'ergols : les plus gros d'abord, puis le plus petit qui suffit.</summary>
-        /// <summary>Masse « inutile » d'un remplissage : masse à vide, ergols en trop ou manquants, et un peu par pièce.</summary>
+        /// <summary>Chooses tanks for at least `fuel` tonnes of propellant: the biggest first, then the smallest that suffices.</summary>
+        /// <summary>"Useless" mass of a fill: dry mass, excess or missing propellant, and a little per part.</summary>
         static double FillScore(double fuel, double got, double dry, int parts)
         {
             double extra = got - fuel;
             return dry + (extra >= 0 ? 0.5 * extra : 3 * -extra) + 0.02 * fuel * parts;
         }
 
-        /// <param name="uniform">Un seul modèle de réservoir (boosters) : pas de réservoir d'une autre famille pour le reste.</param>
+        /// <param name="uniform">A single tank model (boosters): no tank from another family for the remainder.</param>
         List<TankUse> Fill(double fuel, string mixture, string size, out double actualFuel, out double dry, bool uniform = false)
         {
             List<TankUse> used = new List<TankUse>();
@@ -1595,21 +1595,21 @@ namespace LaunchPlanner
             double bestRatio = BestRatio(TanksFor(mixture, size));
             List<PartInfo> tanks = TanksFor(mixture, size).FindAll(t => t.DryMassT / Propellant(t) <= bestRatio * TankRatioSlack);
             if (tanks.Count == 0 || fuel <= 0) return used;
-            // À capacité égale, le réservoir le plus léger à vide.
+            // At equal capacity, the tank that is lightest when empty.
             tanks.Sort((a, b) =>
             {
                 int c = Propellant(b).CompareTo(Propellant(a));
                 return c != 0 ? c : (a.DryMassT / Propellant(a)).CompareTo(b.DryMassT / Propellant(b));
             });
 
-            // Un réservoir principal répété, plus au besoin un seul réservoir pour le reste :
-            // peu de pièces, un empilement régulier, le moins possible d'ergols en trop.
+            // A repeated main tank, plus if needed a single tank for the remainder:
+            // few parts, a regular stack, as little excess propellant as possible.
             double bestScore = double.MaxValue;
             PartInfo bestMain = null, bestRest = null;
             int bestCount = 0;
             foreach (PartInfo main in tanks)
             {
-                // Un réservoir à nez ne se pose qu'en haut d'un booster, seul : jamais sous une autre pièce.
+                // A nose tank only goes on top of a booster, alone: never under another part.
                 if (main.NoseTop && !uniform) continue;
                 double p = Propellant(main);
                 int whole = (int)Math.Floor(fuel / p + 1e-9);
@@ -1621,7 +1621,7 @@ namespace LaunchPlanner
                     if (rest > 0.02 * fuel)
                     {
                         if (uniform) continue;
-                        // Le plus petit réservoir qui couvre le reste.
+                        // The smallest tank that covers the remainder.
                         foreach (PartInfo t in tanks) if (!t.NoseTop && Propellant(t) >= rest - 1e-9) cover = t;
                         if (cover == null) continue;
                     }

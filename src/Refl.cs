@@ -5,8 +5,8 @@ using System.Reflection;
 namespace LaunchPlanner
 {
     /// <summary>
-    /// Lecture par réflexion des membres de KSP dont on ne veut pas dépendre de la forme exacte
-    /// (champ ou propriété). Si un membre n'existe pas, on renvoie null au lieu de planter.
+    /// Reads KSP members through reflection when we do not want to depend on their exact form
+    /// (field or property). If a member does not exist, null is returned instead of crashing.
     /// </summary>
     internal static class Refl
     {
@@ -69,7 +69,7 @@ namespace LaunchPlanner
             return types;
         }
 
-        /// <summary>Parcourt une collection, qu'elle soit énumérable ou seulement indexable (Count + this[int]).</summary>
+        /// <summary>Iterates a collection, whether enumerable or only indexable (Count + this[int]).</summary>
         public static IEnumerable Items(object collection)
         {
             if (collection == null) yield break;

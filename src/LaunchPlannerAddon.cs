@@ -4,12 +4,12 @@ using UnityEngine;
 
 namespace LaunchPlanner
 {
-    /// <summary>Fenêtre du planificateur dans l'éditeur (VAB et SPH), ouverte par un bouton de la barre d'outils.</summary>
+    /// <summary>Planner window in the editor (VAB and SPH), opened by a toolbar button.</summary>
     [KSPAddon(KSPAddon.Startup.EditorAny, false)]
     public class LaunchPlannerAddon : MonoBehaviour
     {
         const int WindowId = 0x4C504C31;
-        static readonly string[] Tabs = { "Mission", "Lanceurs", "Pièces disponibles" };
+        static readonly string[] Tabs = { "Mission", "Launchers", "Available parts" };
 
         ApplicationLauncherButton button;
         bool buttonFailed;
@@ -34,7 +34,7 @@ namespace LaunchPlanner
             catch (Exception e)
             {
                 Debug.LogException(e);
-                parts.ReportError("Erreur à la lecture des pièces : " + e.Message);
+                parts.ReportError("Error reading parts: " + e.Message);
             }
             try
             {
@@ -52,7 +52,7 @@ namespace LaunchPlanner
             {
                 try { mission.Update(); }
                 catch (Exception e) { Debug.LogException(e); }
-                // Le calcul des lanceurs ne tourne que lorsque l'onglet est affiché.
+                // The launcher computation only runs while its tab is displayed.
                 try { if (tab == 1) launchers.Update(); }
                 catch (Exception e) { Debug.LogException(e); }
             }
@@ -63,7 +63,7 @@ namespace LaunchPlanner
             }
             catch (Exception e)
             {
-                // Si la barre d'outils n'est pas accessible, on affiche quand même la fenêtre.
+                // If the toolbar is not accessible, the window is shown anyway.
                 buttonFailed = true;
                 visible = true;
                 Debug.LogException(e);
@@ -100,8 +100,8 @@ namespace LaunchPlanner
 
         void OnGUI()
         {
-            if (visible) windowRect = GUILayout.Window(WindowId, windowRect, DrawWindow, "Planificateur de lanceur");
-            // Tant que la souris est sur la fenêtre, l'éditeur ignore les clics (sinon ils prennent ou posent des pièces derrière).
+            if (visible) windowRect = GUILayout.Window(WindowId, windowRect, DrawWindow, "Launcher Planner");
+            // While the mouse is over the window, the editor ignores clicks (otherwise they would pick up or place parts behind it).
             bool over = visible && windowRect.Contains(Event.current.mousePosition);
             if (over != editorLocked) SetEditorLock(over);
         }
@@ -127,7 +127,7 @@ namespace LaunchPlanner
             GUILayout.BeginHorizontal();
             tab = GUILayout.Toolbar(tab, Tabs, GUILayout.Width(420));
             GUILayout.FlexibleSpace();
-            if (buttonFailed && GUILayout.Button("Fermer", GUILayout.Width(70))) visible = false;
+            if (buttonFailed && GUILayout.Button("Close", GUILayout.Width(70))) visible = false;
             GUILayout.EndHorizontal();
             GUILayout.Space(4);
 
@@ -139,7 +139,7 @@ namespace LaunchPlanner
 
         static Texture2D MakeIcon()
         {
-            // Icône 38x38 dessinée à la main : une fusée blanche sur fond transparent.
+            // Hand-drawn 38x38 icon: a white rocket on a transparent background.
             const int size = 38;
             Texture2D tex = new Texture2D(size, size);
             Color clear = new Color(0, 0, 0, 0);
@@ -150,10 +150,10 @@ namespace LaunchPlanner
                 {
                     Color c = clear;
                     int dx = Math.Abs(x - size / 2);
-                    if (y >= 10 && y <= 28 && dx <= 4) c = white;                 // corps
-                    else if (y > 28 && y <= 34 && dx <= 34 - y) c = white;        // coiffe
-                    else if (y >= 8 && y <= 14 && dx > 4 && dx <= 8) c = white;   // ailerons
-                    else if (y >= 3 && y < 10 && dx <= (y - 3) / 2) c = flame;    // flamme
+                    if (y >= 10 && y <= 28 && dx <= 4) c = white;                 // body
+                    else if (y > 28 && y <= 34 && dx <= 34 - y) c = white;        // nose cone
+                    else if (y >= 8 && y <= 14 && dx > 4 && dx <= 8) c = white;   // fins
+                    else if (y >= 3 && y < 10 && dx <= (y - 3) / 2) c = flame;    // flame
                     tex.SetPixel(x, y, c);
                 }
             tex.Apply();

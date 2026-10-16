@@ -3,20 +3,20 @@ using System.Collections.Generic;
 
 namespace LaunchPlanner
 {
-    /// <summary>Ce que le calcul du Δv a besoin de savoir d'un corps céleste (indépendant de KSP, donc testable).</summary>
+    /// <summary>What the delta-v computation needs to know about a celestial body (independent of KSP, hence testable).</summary>
     public class BodyInfo
     {
-        public string Name;            // nom affiché (localisé)
-        public string Key;             // nom interne (bodyName), stable quelle que soit la langue
-        public double Mu;              // paramètre gravitationnel (m³/s²)
+        public string Name;            // displayed name (localized)
+        public string Key;             // internal name (bodyName), stable regardless of language
+        public double Mu;              // gravitational parameter (m³/s²)
         public double Radius;          // m
         public bool HasAtmosphere;
         public double AtmosphereDepth; // m
-        public double PressureAtm;     // pression au niveau de la mer, en atmosphères
+        public double PressureAtm;     // sea-level pressure, in atmospheres
         public double RotationPeriod;  // s
         public bool HasSurface = true;
         public bool IsStar;
-        public double Sma;             // demi-grand axe de l'orbite autour du parent (m)
+        public double Sma;             // semi-major axis of the orbit around the parent (m)
         public BodyInfo Parent;
 
         public double LowOrbitRadius
@@ -46,8 +46,8 @@ namespace LaunchPlanner
         public string Note = "";
         public bool CoveredByPayload;
         public double CoveredDeltaV;
-        public double LanderDeltaV;     // part assurée par l'étage atterrisseur
-        public bool Landing;            // atterrissage sur la destination
+        public double LanderDeltaV;     // share provided by the lander stage
+        public bool Landing;            // landing on the destination
     }
 
     public class Budget
@@ -57,26 +57,26 @@ namespace LaunchPlanner
         public double Total;
         public double TotalWithMargin;
         public double PayloadDeltaV;
-        public double PayloadUsedDeltaV;   // part du Δv de la charge utile comptée dans la mission
+        public double PayloadUsedDeltaV;   // share of the payload delta-v counted in the mission
         public double LauncherDeltaV;
 
-        // Étage atterrisseur ajouté par le lanceur quand la charge utile ne peut pas se poser seule
+        // Lander stage added by the launcher when the payload cannot land by itself
         public double LanderDeltaV;
         public double LanderGravity;
         public string LanderBody = "";
     }
 
     /// <summary>
-    /// Budget Δv d'une mission par transferts de Hohmann entre orbites circulaires et coplanaires
-    /// (coniques raccordées). C'est l'équivalent calculé d'une carte de Δv : la marge couvre
-    /// les changements de plan, les corrections et le pilotage.
+    /// Delta-v budget of a mission using Hohmann transfers between circular, coplanar orbits
+    /// (patched conics). It is the computed equivalent of a delta-v map: the margin covers
+    /// plane changes, corrections and piloting.
     /// </summary>
     public static class MissionBudget
     {
-        // Δv sol → orbite basse de la carte communautaire, pour les corps du jeu de base non redimensionnés.
+        // Surface-to-low-orbit delta-v from the community map, for unscaled stock bodies.
         static readonly Dictionary<string, double[]> StockAscent = new Dictionary<string, double[]>
         {
-            // nom : { rayon (m), Δv (m/s) }
+            // name: { radius (m), delta-v (m/s) }
             { "Kerbin", new double[] { 600000, 3400 } },
             { "Mun", new double[] { 200000, 580 } },
             { "Minmus", new double[] { 60000, 180 } },
@@ -94,7 +94,7 @@ namespace LaunchPlanner
             { "Eeloo", new double[] { 210000, 620 } },
         };
 
-        /// <summary>Δv pour décoller et atteindre l'orbite basse.</summary>
+        /// <summary>Delta-v to take off and reach low orbit.</summary>
         public static double Ascent(BodyInfo b)
         {
             double[] stock;
@@ -103,29 +103,29 @@ namespace LaunchPlanner
             double v = b.LowOrbitSpeed;
             if (!b.HasAtmosphere) return v * 1.05;
             double rotation = b.RotationPeriod > 0 ? 2 * Math.PI * b.Radius / b.RotationPeriod : 0;
-            // Pertes par gravité et par traînée, calées sur Kerbin (≈ 3 400 m/s).
+            // Gravity and drag losses, calibrated on Kerbin (about 3,400 m/s).
             double gravityLoss = 0.3 * v;
             double dragLoss = 600 * Math.Pow(b.PressureAtm, 0.75);
             return v - rotation + gravityLoss + dragLoss;
         }
 
-        /// <summary>Δv pour se poser depuis l'orbite basse. Avec une atmosphère, on compte sur l'aérofreinage et les parachutes.</summary>
+        /// <summary>Delta-v to land from low orbit. With an atmosphere, aerobraking and parachutes are assumed.</summary>
         public static double Landing(BodyInfo b, out string note)
         {
             note = "";
             if (!b.HasAtmosphere) return Ascent(b);
-            note = "aérofreinage et parachutes";
+            note = "aerobraking and parachutes";
             return b.PressureAtm > 0.5 ? 0 : 0.15 * b.LowOrbitSpeed;
         }
 
-        /// <summary>Δv entre une orbite basse et une vitesse d'excès hyperbolique vInf (éjection ou capture).</summary>
+        /// <summary>Delta-v between a low orbit and a hyperbolic excess speed vInf (ejection or capture).</summary>
         public static double Hyperbolic(BodyInfo b, double vInf)
         {
             double r = b.LowOrbitRadius;
             return Math.Sqrt(vInf * vInf + 2 * b.Mu / r) - Math.Sqrt(b.Mu / r);
         }
 
-        /// <summary>Vitesses d'excès au départ et à l'arrivée d'un Hohmann entre deux orbites circulaires autour de mu.</summary>
+        /// <summary>Excess speeds at departure and arrival of a Hohmann transfer between two circular orbits around mu.</summary>
         public static void Hohmann(double mu, double r1, double r2, out double vDepart, out double vArrive)
         {
             double a = (r1 + r2) / 2;
@@ -133,8 +133,8 @@ namespace LaunchPlanner
             vArrive = Math.Abs(Math.Sqrt(mu / r2) - Math.Sqrt(mu * (2 / r2 - 1 / a)));
         }
 
-        /// <param name="payloadPhases">Étapes que le joueur confie à la charge utile (une case par étape),
-        /// ou null pour la répartition automatique.</param>
+        /// <param name="payloadPhases">Phases the player assigns to the payload (one flag per phase),
+        /// or null for the automatic split.</param>
         public static Budget Compute(BodyInfo home, BodyInfo dest, MissionType type, double margin, double payloadDeltaV,
             bool[] payloadPhases = null)
         {
@@ -142,8 +142,8 @@ namespace LaunchPlanner
             bool landing = type == MissionType.Landing || type == MissionType.LandingReturn;
             bool back = type == MissionType.LandingReturn || type == MissionType.OrbitReturn;
 
-            Add(budget, "Décollage et orbite basse de " + home.Name, Ascent(home), "");
-            int arrival = 0;   // dernière étape du trajet jusqu'en orbite de la destination
+            Add(budget, "Liftoff and low orbit of " + home.Name, Ascent(home), "");
+            int arrival = 0;   // last phase of the trip to the destination's orbit
 
             if (dest != home)
             {
@@ -151,22 +151,22 @@ namespace LaunchPlanner
                 string capNote;
                 if (!Transfer(home, dest, out outbound, out capture, out inbound, out returnCapture, out capNote))
                 {
-                    budget.Warnings.Add("Trajet entre " + home.Name + " et " + dest.Name + " non pris en charge : seul le décollage est compté.");
+                    budget.Warnings.Add("Trip between " + home.Name + " and " + dest.Name + " is not supported: only the liftoff is counted.");
                 }
                 else
                 {
-                    Add(budget, "Injection vers " + dest.Name, outbound, "");
-                    Add(budget, "Mise en orbite de " + dest.Name, capture, capNote);
+                    Add(budget, "Transfer injection to " + dest.Name, outbound, "");
+                    Add(budget, "Orbit insertion at " + dest.Name, capture, capNote);
                     arrival = budget.Phases.Count - 1;
                     if (landing) AddLanding(budget, dest);
-                    if (landing && back) Add(budget, "Décollage de " + dest.Name, Ascent(dest), "");
+                    if (landing && back) Add(budget, "Liftoff from " + dest.Name, Ascent(dest), "");
                     if (back)
                     {
-                        Add(budget, "Retour vers " + home.Name, inbound, "");
-                        if (home.HasAtmosphere) Add(budget, "Rentrée sur " + home.Name, 0, "aérofreinage et parachutes");
+                        Add(budget, "Return to " + home.Name, inbound, "");
+                        if (home.HasAtmosphere) Add(budget, "Re-entry at " + home.Name, 0, "aerobraking and parachutes");
                         else
                         {
-                            Add(budget, "Mise en orbite de " + home.Name, returnCapture, "");
+                            Add(budget, "Orbit insertion at " + home.Name, returnCapture, "");
                             AddLanding(budget, home);
                         }
                     }
@@ -177,7 +177,7 @@ namespace LaunchPlanner
                 AddLanding(budget, home);
             }
 
-            if (landing && !dest.HasSurface) budget.Warnings.Add(dest.Name + " n'a pas de surface solide : impossible de s'y poser.");
+            if (landing && !dest.HasSurface) budget.Warnings.Add(dest.Name + " has no solid surface: cannot land there.");
 
             foreach (Phase p in budget.Phases) budget.Total += p.DeltaV;
             budget.TotalWithMargin = budget.Total * (1 + margin);
@@ -185,7 +185,7 @@ namespace LaunchPlanner
 
             if (payloadPhases != null && payloadPhases.Length == budget.Phases.Count)
             {
-                // Choix du joueur, étape par étape. Le décollage reste toujours au lanceur.
+                // Player's choice, phase by phase. The liftoff always stays with the launcher.
                 double launcher = 0, payloadNeed = 0;
                 for (int i = 0; i < budget.Phases.Count; i++)
                 {
@@ -202,13 +202,13 @@ namespace LaunchPlanner
                 budget.LauncherDeltaV = launcher;
                 budget.PayloadUsedDeltaV = payloadNeed;
                 if (payloadNeed > 0.5 && payloadDeltaV < payloadNeed - 0.5)
-                    budget.Warnings.Add(string.Format("La charge utile n'a que {0:0} m/s pour les {1:0} m/s des étapes que tu lui confies.",
+                    budget.Warnings.Add(string.Format("The payload only has {0:0} m/s for the {1:0} m/s of the phases you assign to it.",
                         payloadDeltaV, payloadNeed));
             }
             else
             {
-                // Le lanceur amène la charge utile en orbite de la destination ; le Δv de la charge utile sert à ce qu'elle
-                // fait sur place (atterrissage, remontée, retour), en remontant depuis la fin, jamais au trajet.
+                // The launcher brings the payload to the destination's orbit; the payload's delta-v is used for what it
+                // does on site (landing, ascent, return), working back from the end, never for the trip.
                 double remaining = budget.PayloadDeltaV;
                 for (int i = budget.Phases.Count - 1; i > arrival && remaining > 0; i--)
                 {
@@ -222,8 +222,8 @@ namespace LaunchPlanner
                 budget.PayloadUsedDeltaV = budget.PayloadDeltaV - remaining;
             }
 
-            // Ce que la charge utile ne couvre pas à partir de l'atterrissage revient à un étage atterrisseur :
-            // l'étage du haut d'un lanceur n'a ni jambes ni la poussée voulue pour se poser.
+            // What the payload does not cover from the landing onward goes to a lander stage:
+            // a launcher's upper stage has neither legs nor the thrust needed to land.
             int landingPhase = budget.Phases.FindIndex(p => p.Landing);
             if (landing && landingPhase >= 1 && dest.HasSurface)
             {
@@ -250,7 +250,7 @@ namespace LaunchPlanner
         {
             string note;
             double dv = Landing(b, out note);
-            Add(budget, "Atterrissage sur " + b.Name, dv, note);
+            Add(budget, "Landing at " + b.Name, dv, note);
             budget.Phases[budget.Phases.Count - 1].Landing = true;
         }
 
@@ -260,9 +260,9 @@ namespace LaunchPlanner
         }
 
         /// <summary>
-        /// Calcule les Δv aller (éjection, capture) et retour (éjection, capture) entre l'orbite basse
-        /// du corps de départ et celle de la destination. Cas pris en charge : lune du corps de départ,
-        /// corps frère (même parent), lune d'un corps frère, et l'inverse (départ depuis une lune vers son parent).
+        /// Computes the outbound (ejection, capture) and return (ejection, capture) delta-v between the low orbit
+        /// of the departure body and that of the destination. Supported cases: moon of the departure body,
+        /// sibling body (same parent), moon of a sibling body, and the reverse (departure from a moon to its parent).
         /// </summary>
         public static bool Transfer(BodyInfo home, BodyInfo dest, out double outbound, out double capture,
             out double inbound, out double returnCapture, out string captureNote)
@@ -273,7 +273,7 @@ namespace LaunchPlanner
 
             if (dest.Parent == home)
             {
-                // Lune du corps de départ : transfert depuis l'orbite basse jusqu'à l'orbite de la lune.
+                // Moon of the departure body: transfer from low orbit to the moon's orbit.
                 Hohmann(home.Mu, home.LowOrbitRadius, dest.Sma, out vDep, out vArr);
                 outbound = vDep;
                 capture = Hyperbolic(dest, vArr);
@@ -284,7 +284,7 @@ namespace LaunchPlanner
 
             if (home.Parent != null && dest == home.Parent)
             {
-                // Depuis une lune vers son parent.
+                // From a moon to its parent.
                 Hohmann(dest.Mu, home.Sma, dest.LowOrbitRadius, out vDep, out vArr);
                 outbound = Hyperbolic(home, vDep);
                 capture = vArr;
@@ -295,7 +295,7 @@ namespace LaunchPlanner
 
             if (home.Parent != null && dest.Parent == home.Parent)
             {
-                // Corps frères : transfert de Hohmann autour du parent commun.
+                // Sibling bodies: Hohmann transfer around the common parent.
                 Hohmann(home.Parent.Mu, home.Sma, dest.Sma, out vDep, out vArr);
                 outbound = Hyperbolic(home, vDep);
                 capture = Hyperbolic(dest, vArr);
@@ -306,8 +306,8 @@ namespace LaunchPlanner
 
             if (home.Parent != null && dest.Parent != null && dest.Parent.Parent == home.Parent)
             {
-                // Lune d'une autre planète : transfert vers la planète, freinage jusqu'à l'orbite de la lune,
-                // puis capture autour de la lune. Sans assistance gravitationnelle, donc prudent.
+                // Moon of another planet: transfer to the planet, braking down to the moon's orbit,
+                // then capture around the moon. No gravity assist, so conservative.
                 BodyInfo planet = dest.Parent;
                 Hohmann(home.Parent.Mu, home.Sma, planet.Sma, out vDep, out vArr);
                 outbound = Hyperbolic(home, vDep);
@@ -315,7 +315,7 @@ namespace LaunchPlanner
                 double planetBrake = Math.Sqrt(vArr * vArr + 2 * planet.Mu / r) - Math.Sqrt(planet.Mu / r);
                 double moonCapture = Math.Sqrt(2 * dest.Mu / dest.LowOrbitRadius) - dest.LowOrbitSpeed;
                 capture = planetBrake + moonCapture;
-                if (planet.HasAtmosphere) captureNote = "aérocapture possible sur " + planet.Name;
+                if (planet.HasAtmosphere) captureNote = "aerocapture possible at " + planet.Name;
                 inbound = capture;
                 returnCapture = outbound;
                 return true;

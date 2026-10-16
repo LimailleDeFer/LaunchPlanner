@@ -5,10 +5,10 @@ using UnityEngine;
 
 namespace LaunchPlanner
 {
-    /// <summary>Onglet « Pièces » : inventaire des pièces lues, pour vérification.</summary>
+    /// <summary>"Parts" tab: inventory of the parts read, for verification.</summary>
     public class PartsView
     {
-        static readonly string[] Tabs = { "Moteurs", "Boosters", "Réservoirs", "Découpleurs" };
+        static readonly string[] Tabs = { "Engines", "Boosters", "Tanks", "Decouplers" };
 
         Vector2 scroll;
         int tab;
@@ -33,20 +33,20 @@ namespace LaunchPlanner
                 sources.TryGetValue(p.Source, out n);
                 sources[p.Source] = n + 1;
             }
-            GUILayout.Label(string.Format("{0} pièces chargées, {1} utiles au lanceur dont {2} débloquées.",
+            GUILayout.Label(string.Format("{0} parts loaded, {1} useful to the launcher, {2} of them unlocked.",
                 PartInventory.LoadedCount, PartInventory.Parts.Count, unlocked));
             GUILayout.FlexibleSpace();
-            if (GUILayout.Button("Relire", GUILayout.Width(80))) PartInventory.Refresh();
-            if (GUILayout.Button("Exporter CSV", GUILayout.Width(110))) Export();
+            if (GUILayout.Button("Reload", GUILayout.Width(80))) PartInventory.Refresh();
+            if (GUILayout.Button("Export CSV", GUILayout.Width(110))) Export();
             GUILayout.EndHorizontal();
 
             List<string> bySource = new List<string>();
             foreach (KeyValuePair<string, int> kv in sources) bySource.Add(kv.Key + " (" + kv.Value + ")");
-            GUILayout.Label("Origine : " + string.Join(", ", bySource.ToArray()));
+            GUILayout.Label("Source: " + string.Join(", ", bySource.ToArray()));
 
             GUILayout.BeginHorizontal();
             tab = GUILayout.Toolbar(tab, Tabs);
-            showLocked = GUILayout.Toggle(showLocked, "Afficher aussi les pièces non débloquées", GUILayout.Width(300));
+            showLocked = GUILayout.Toggle(showLocked, "Also show locked parts", GUILayout.Width(300));
             GUILayout.EndHorizontal();
 
             PartKind kind = (PartKind)tab;
@@ -60,35 +60,35 @@ namespace LaunchPlanner
             GUILayout.EndScrollView();
 
             if (status.Length > 0) GUILayout.Label(status);
-            foreach (string err in PartInventory.Errors) GUILayout.Label("Erreur : " + err);
+            foreach (string err in PartInventory.Errors) GUILayout.Label("Error: " + err);
         }
 
         static void DrawHeader(PartKind kind)
         {
             GUILayout.BeginHorizontal();
-            Cell("Pièce", 240);
-            Cell("Origine", 110);
-            Cell("Taille", 90);
+            Cell("Part", 240);
+            Cell("Source", 110);
+            Cell("Size", 90);
             switch (kind)
             {
                 case PartKind.Engine:
-                    Cell("Poussée sol/vide (kN)", 140);
-                    Cell("Isp sol/vide (s)", 100);
-                    Cell("Masse (t)", 70);
-                    Cell("Ergols", 90);
+                    Cell("Thrust ASL/vac (kN)", 140);
+                    Cell("Isp ASL/vac (s)", 100);
+                    Cell("Mass (t)", 70);
+                    Cell("Propellants", 90);
                     break;
                 case PartKind.Booster:
-                    Cell("Poussée sol/vide (kN)", 140);
-                    Cell("Isp sol/vide (s)", 100);
-                    Cell("Masse vide/pleine (t)", 130);
-                    Cell("Durée (s)", 60);
+                    Cell("Thrust ASL/vac (kN)", 140);
+                    Cell("Isp ASL/vac (s)", 100);
+                    Cell("Dry/wet mass (t)", 130);
+                    Cell("Burn (s)", 60);
                     break;
                 case PartKind.Tank:
-                    Cell("Masse vide/pleine (t)", 130);
-                    Cell("Contenu", 260);
+                    Cell("Dry/wet mass (t)", 130);
+                    Cell("Contents", 260);
                     break;
                 default:
-                    Cell("Masse (t)", 70);
+                    Cell("Mass (t)", 70);
                     break;
             }
             GUILayout.EndHorizontal();
@@ -97,7 +97,7 @@ namespace LaunchPlanner
         static void DrawRow(PartInfo p)
         {
             GUILayout.BeginHorizontal();
-            Cell((p.Unlocked ? "" : "[verrouillée] ") + p.Title, 240);
+            Cell((p.Unlocked ? "" : "[locked] ") + p.Title, 240);
             Cell(p.Source, 110);
             Cell(p.Sizes, 90);
             switch (p.Kind)
@@ -136,13 +136,13 @@ namespace LaunchPlanner
         {
             try
             {
-                // Plugins/LaunchPlanner.dll -> GameData/LaunchPlanner/inventaire.csv
+                // Plugins/LaunchPlanner.dll -> GameData/LaunchPlanner/inventory.csv
                 string dir = Path.GetDirectoryName(Path.GetDirectoryName(typeof(PartsView).Assembly.Location));
-                status = "Inventaire exporté : " + PartInventory.ExportCsv(dir);
+                status = "Inventory exported: " + PartInventory.ExportCsv(dir);
             }
             catch (Exception e)
             {
-                status = "Export impossible : " + e.Message;
+                status = "Export failed: " + e.Message;
                 Debug.LogException(e);
             }
         }

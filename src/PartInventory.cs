@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace LaunchPlanner
 {
-    /// <summary>Inventaire des pièces chargées par KSP (jeu de base, DLC et mods), triées par type.</summary>
+    /// <summary>Inventory of the parts loaded by KSP (stock, DLC and mods), sorted by kind.</summary>
     public static class PartInventory
     {
         static readonly HashSet<string> FuelResources = new HashSet<string>
@@ -50,7 +50,7 @@ namespace LaunchPlanner
                 }
                 catch (Exception e)
                 {
-                    if (Errors.Count < 20) Errors.Add(ap.name + " : " + e.Message);
+                    if (Errors.Count < 20) Errors.Add(ap.name + ": " + e.Message);
                 }
             }
 
@@ -61,12 +61,12 @@ namespace LaunchPlanner
                 return byThrust != 0 ? byThrust : b.WetMassT.CompareTo(a.WetMassT);
             });
 
-            Debug.Log(string.Format("[LaunchPlanner] {0} pièces chargées, {1} utiles au lanceur, {2} erreurs",
+            Debug.Log(string.Format("[LaunchPlanner] {0} parts loaded, {1} useful to the launcher, {2} errors",
                 LoadedCount, Parts.Count, Errors.Count));
             foreach (string err in Errors) Debug.LogWarning("[LaunchPlanner] " + err);
         }
 
-        // En sandbox il n'y a pas d'arbre technologique : tout est disponible.
+        // In sandbox there is no tech tree: everything is available.
         public static bool SafeHasResearch()
         {
             return Refl.GetStatic(typeof(ResearchAndDevelopment), "Instance") != null;
@@ -79,8 +79,8 @@ namespace LaunchPlanner
         }
 
         /// <summary>
-        /// Une pièce donne zéro, une ou plusieurs entrées : un réservoir commutable (B9PartSwitch,
-        /// utilisé par CryoTanks et beaucoup de mods) donne une entrée par contenu possible.
+        /// A part yields zero, one or several entries: a switchable tank (B9PartSwitch,
+        /// used by CryoTanks and many mods) yields one entry per possible content.
         /// </summary>
         static List<PartInfo> Describe(AvailablePart ap)
         {
@@ -150,7 +150,7 @@ namespace LaunchPlanner
             return variants;
         }
 
-        /// <summary>Hauteur d'empilement : écart entre le nœud le plus haut et le plus bas.</summary>
+        /// <summary>Stack height: gap between the highest and lowest node.</summary>
         static double StackHeight(Part prefab)
         {
             double top = double.MinValue, bottom = double.MaxValue;
@@ -165,7 +165,7 @@ namespace LaunchPlanner
             return n >= 2 ? top - bottom : 0;
         }
 
-        /// <summary>Largeur du modèle 3D (le profil annoncé par certains mods ne correspond pas à la taille réelle).</summary>
+        /// <summary>Width of the 3D model (the profile declared by some mods does not match the real size).</summary>
         static double ModelWidth(Part prefab)
         {
             try
@@ -199,14 +199,14 @@ namespace LaunchPlanner
             try { return Convert.ToDouble(value); } catch { return 0; }
         }
 
-        /// <summary>Lit la pièce telle que configurée par défaut. Kind vaut Tank pour toute pièce sans moteur ni découpleur.</summary>
+        /// <summary>Reads the part as configured by default. Kind is Tank for any part without an engine or decoupler.</summary>
         static PartInfo DescribeBase(AvailablePart ap)
         {
             Part prefab = ap.partPrefab;
             PartInfo info = new PartInfo
             {
                 Name = ap.name,
-                Title = string.IsNullOrEmpty(ap.title) || ap.title.StartsWith("#") ? ap.name : ap.title,   // titre non traduit : on garde le nom interne
+                Title = string.IsNullOrEmpty(ap.title) || ap.title.StartsWith("#") ? ap.name : ap.title,   // untranslated title: keep the internal name
                 Source = SourceOf(Refl.Str(ap, "partUrl")),
                 Sizes = Refl.Str(ap, "bulkheadProfiles"),
                 Tech = Refl.Str(ap, "TechRequired"),
@@ -224,7 +224,7 @@ namespace LaunchPlanner
             List<ModuleEngines> engines = prefab.FindModulesImplementing<ModuleEngines>();
             if (engines != null && engines.Count > 0)
             {
-                // Plusieurs modes (ex. RAPIER) : on garde le plus puissant en vide pour l'instant.
+                // Several modes (e.g. RAPIER): for now we keep the most powerful one in vacuum.
                 ModuleEngines best = engines[0];
                 foreach (ModuleEngines e in engines) if (e.maxThrust > best.maxThrust) best = e;
                 if (best.maxThrust <= 0 || best.atmosphereCurve == null) return null;
@@ -244,7 +244,7 @@ namespace LaunchPlanner
                         if (p.name == "SolidFuel") solid = true;
                     }
                 info.Propellants = string.Join(" + ", names.ToArray());
-                // Propulseur à poudre : poussée non réglable et carburant embarqué.
+                // Solid motor: non-adjustable thrust and onboard fuel.
                 info.Kind = solid && best.throttleLocked && info.WetMassT > info.DryMassT ? PartKind.Booster : PartKind.Engine;
                 if (info.Kind == PartKind.Booster) info.NoseTop = PointedTop(prefab);
                 return info;
@@ -256,7 +256,7 @@ namespace LaunchPlanner
                 return info;
             }
 
-            // Les cockpits et capsules embarquent du monergol mais ne sont pas des réservoirs.
+            // Cockpits and capsules carry monopropellant but are not tanks.
             if (HasModule(prefab, CommandModules)) return null;
 
             info.Kind = PartKind.Tank;
@@ -264,7 +264,7 @@ namespace LaunchPlanner
             return info;
         }
 
-        // Modèle désactivé (variante non choisie d'une pièce commutable) : le prefab lui-même est inactif, on regarde en dessous.
+        // Disabled model (unchosen variant of a switchable part): the prefab itself is inactive, so we look below it.
         static bool Hidden(Transform t, Transform root)
         {
             for (; t != null && t != root; t = t.parent)
@@ -273,8 +273,8 @@ namespace LaunchPlanner
         }
 
         /// <summary>
-        /// Le modèle se termine-t-il en pointe ? Vrai si le haut du modèle dépasse nettement le nœud du haut (ou s'il n'y a pas
-        /// de nœud du haut), ou si sa tranche supérieure est bien plus étroite que le reste (réservoir à nez, comme ceux de Proton).
+        /// Does the model end in a point? True if the top of the model clearly extends past the top node (or if there is no
+        /// top node), or if its top slice is much narrower than the rest (nose tank, like Proton's).
         /// </summary>
         public static bool PointedTop(Part prefab)
         {
@@ -324,8 +324,8 @@ namespace LaunchPlanner
 
         static void ReadResources(AvailablePart ap, Part prefab, PartInfo info)
         {
-            // Le prefab reflète la configuration par défaut, y compris celle posée par des mods
-            // comme B9PartSwitch. À défaut, on relit les nœuds RESOURCE de la config.
+            // The prefab reflects the default configuration, including the one set by mods
+            // such as B9PartSwitch. Failing that, the config's RESOURCE nodes are read again.
             foreach (object r in Refl.Items(Refl.Get(prefab, "Resources")))
             {
                 string name = Refl.Str(r, "resourceName");
@@ -380,24 +380,24 @@ namespace LaunchPlanner
             return root;
         }
 
-        /// <summary>Écrit l'inventaire en CSV (séparateur ;) pour vérification ou diagnostic.</summary>
+        /// <summary>Writes the inventory as CSV (; separator) for verification or diagnostics.</summary>
         public static string ExportCsv(string directory)
         {
-            string path = Path.Combine(directory, "inventaire.csv");
+            string path = Path.Combine(directory, "inventory.csv");
             CultureInfo ci = CultureInfo.InvariantCulture;
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine("type;nom;variante;titre;source;tailles;tech;debloquee;cout;masse_seche_t;masse_pleine_t;poussee_vide_kN;poussee_sol_kN;isp_vide_s;isp_sol_s;ergols;ressources;categorie;hauteur_m;diametre_m;nez");
+            sb.AppendLine("type;name;variant;title;source;sizes;tech;unlocked;cost;dry_mass_t;wet_mass_t;thrust_vac_kN;thrust_asl_kN;isp_vac_s;isp_asl_s;propellants;resources;category;height_m;diameter_m;nose");
             foreach (PartInfo p in Parts)
             {
                 List<string> res = new List<string>();
                 foreach (ResourceAmount r in p.Resources) res.Add(r.Name + "=" + r.Amount.ToString("0.##", ci));
                 sb.AppendLine(string.Join(";", new string[]
                 {
-                    p.Kind.ToString(), p.Name, p.Variant, p.Title.Replace(";", ","), p.Source, p.Sizes, p.Tech, p.Unlocked ? "oui" : "non",
+                    p.Kind.ToString(), p.Name, p.Variant, p.Title.Replace(";", ","), p.Source, p.Sizes, p.Tech, p.Unlocked ? "yes" : "no",
                     p.Cost.ToString("0", ci), p.DryMassT.ToString("0.###", ci), p.WetMassT.ToString("0.###", ci),
                     p.ThrustVacKN.ToString("0.#", ci), p.ThrustAslKN.ToString("0.#", ci),
                     p.IspVac.ToString("0", ci), p.IspAsl.ToString("0", ci), p.Propellants, string.Join(" ", res.ToArray()), p.Category,
-                    p.HeightM.ToString("0.###", ci), p.DiameterM.ToString("0.###", ci), p.NoseTop ? "oui" : "non",
+                    p.HeightM.ToString("0.###", ci), p.DiameterM.ToString("0.###", ci), p.NoseTop ? "yes" : "no",
                 }));
             }
             File.WriteAllText(path, sb.ToString(), Encoding.UTF8);

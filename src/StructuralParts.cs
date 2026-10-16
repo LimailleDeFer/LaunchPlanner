@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace LaunchPlanner
 {
-    /// <summary>Pièces sans carburant utiles au constructeur : cônes de nez des boosters, coupleurs multiples des grappes.</summary>
+    /// <summary>Fuel-less parts useful to the builder: booster nose cones, multi-couplers for clusters.</summary>
     public static class StructuralParts
     {
         static readonly HashSet<string> Excluded = new HashSet<string>
@@ -48,13 +48,13 @@ namespace LaunchPlanner
             };
         }
 
-        /// <summary>Diamètre d'un nœud d'après sa taille (0 = 0,625 m, 1 = 1,25 m, 2 = 2,5 m…).</summary>
+        /// <summary>Diameter of a node from its size (0 = 0.625 m, 1 = 1.25 m, 2 = 2.5 m...).</summary>
         static double NodeDiameter(int size)
         {
             return size <= 0 ? 0.625 : 1.25 * size;
         }
 
-        /// <summary>Cônes de nez : un seul nœud empilé, tourné vers le bas, et le modèle au-dessus.</summary>
+        /// <summary>Nose cones: a single stack node, facing down, with the model above it.</summary>
         public static List<PartInfo> NoseCones()
         {
             List<PartInfo> cones = new List<PartInfo>();
@@ -76,7 +76,7 @@ namespace LaunchPlanner
             return cones;
         }
 
-        /// <summary>Coupleurs multiples : un nœud en haut, au moins deux nœuds en bas, côte à côte.</summary>
+        /// <summary>Multi-couplers: one node on top, at least two nodes on the bottom, side by side.</summary>
         public static List<PartInfo> MultiCouplers()
         {
             List<PartInfo> couplers = new List<PartInfo>();
@@ -116,7 +116,7 @@ namespace LaunchPlanner
             return couplers;
         }
 
-        /// <summary>Profil du nœud libre le plus bas de la charge utile (là où le lanceur s'accroche), ou "".</summary>
+        /// <summary>Profile of the lowest free node of the payload (where the launcher attaches), or "".</summary>
         public static string PayloadBottomSize()
         {
             try

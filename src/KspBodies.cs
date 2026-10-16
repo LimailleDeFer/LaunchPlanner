@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace LaunchPlanner
 {
-    /// <summary>Lit les corps célestes chargés par KSP (y compris ceux des packs de planètes Kopernicus).</summary>
+    /// <summary>Reads the celestial bodies loaded by KSP (including those from Kopernicus planet packs).</summary>
     public static class KspBodies
     {
         public static List<BodyInfo> All = new List<BodyInfo>();
@@ -49,7 +49,7 @@ namespace LaunchPlanner
             CelestialBody home = FlightGlobals.GetHomeBody();
             if (home != null) map.TryGetValue(home, out Home);
 
-            // Ordre d'affichage : chaque corps suivi de ses lunes, par distance au parent.
+            // Display order: each body followed by its moons, by distance from the parent.
             List<BodyInfo> ordered = new List<BodyInfo>();
             foreach (BodyInfo root in All) if (root.Parent == null) AddTree(root, ordered);
             All = ordered;
@@ -68,7 +68,7 @@ namespace LaunchPlanner
         {
             string name = cb.displayName;
             if (string.IsNullOrEmpty(name)) name = cb.bodyName;
-            int caret = name.IndexOf('^');   // les noms localisés finissent par "^N"
+            int caret = name.IndexOf('^');   // localized names end with "^N"
             return caret > 0 ? name.Substring(0, caret) : name;
         }
     }

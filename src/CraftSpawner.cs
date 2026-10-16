@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace LaunchPlanner
 {
-    /// <summary>Lit la forme des pièces sur leur modèle chargé par le jeu (nœuds de fixation, modules).</summary>
+    /// <summary>Reads the shape of parts from their model loaded by the game (attach nodes, modules).</summary>
     public class KspPartShapes : IPartShapes
     {
         readonly Dictionary<string, PartShape> cache = new Dictionary<string, PartShape>();
@@ -26,8 +26,8 @@ namespace LaunchPlanner
                     if (n.position.y > top) { top = n.position.y; shape.TopNode = n.id; }
                     if (n.position.y < bottom) { bottom = n.position.y; shape.BottomNode = n.id; }
                 }
-                if (shape.TopNode == shape.BottomNode) shape.BottomNode = null;   // un seul nœud : il sert de nœud du haut
-                // Coupleur multiple : plusieurs nœuds au même niveau en bas.
+                if (shape.TopNode == shape.BottomNode) shape.BottomNode = null;   // single node: it serves as the top node
+                // Multi-coupler: several nodes at the same level at the bottom.
                 foreach (AttachNode n in prefab.attachNodes)
                 {
                     if (n == null || n.nodeType != AttachNode.NodeType.Stack || n.id == shape.TopNode) continue;
@@ -44,7 +44,7 @@ namespace LaunchPlanner
                     shape.SrfPos = new Vec3(p.x, p.y, p.z);
                     shape.SrfDir = new Vec3(o.x, o.y, o.z);
                 }
-                // Sens de sortie des gaz (fusées de séparation inclinées) : axe avant du point de poussée, dans le repère de la pièce.
+                // Exhaust direction (angled separation motors): forward axis of the thrust transform, in the part's frame.
                 ModuleEngines engine = prefab.FindModuleImplementing<ModuleEngines>();
                 Transform thrust = engine != null ? prefab.FindModelTransform(engine.thrustVectorTransformName) : null;
                 if (thrust != null)
@@ -64,21 +64,21 @@ namespace LaunchPlanner
     }
 
     /// <summary>
-    /// Construit la variante choisie. S'il y a une charge utile dans l'éditeur, le lanceur est fixé sous sa pièce la plus basse
-    /// (nœud du bas libre) et ses étages passent avant ceux de la charge utile ; le vaisseau complet est ensuite rechargé.
+    /// Builds the chosen variant. If there is a payload in the editor, the launcher is attached under its lowest part
+    /// (free bottom node) and its stages come before those of the payload; the complete vessel is then reloaded.
     /// </summary>
     public static class CraftSpawner
     {
         public static string LastCraftPath = "";
         public static string BackupPath = "";
 
-        /// <summary>Renvoie un message d'erreur, ou null si le lanceur est en place dans l'éditeur.</summary>
+        /// <summary>Returns an error message, or null if the launcher is in place in the editor.</summary>
         public static string Spawn(LauncherDesign design, List<string> notes)
         {
             EditorLogic editor = EditorLogic.fetch;
-            if (editor == null) return "L'éditeur n'est pas ouvert.";
-            if (EditorLogic.SelectedPart != null) return "Repose d'abord la pièce que tu tiens, puis recommence.";
-            if (design == null || design.Stages.Count == 0) return "Aucune variante choisie.";
+            if (editor == null) return "The editor is not open.";
+            if (EditorLogic.SelectedPart != null) return "Put down the part you are holding first, then try again.";
+            if (design == null || design.Stages.Count == 0) return "No variant selected.";
 
             KspPartShapes shapes = new KspPartShapes();
             CraftBuilder builder = new CraftBuilder(shapes) { FuelLine = FuelLine() };
@@ -94,15 +94,15 @@ namespace LaunchPlanner
             }
             else
             {
-                result = ConfigNode.Parse(CraftWriter.Write(builder, parts, "Lanceur " + design.Variant, GameVersion()).ToText());
+                result = ConfigNode.Parse(CraftWriter.Write(builder, parts, "Launcher " + design.Variant, GameVersion()).ToText());
             }
-            if (result == null) return "Lecture du lanceur généré impossible.";
-            if (!Save(result)) return "Impossible d'écrire le vaisseau dans GameData/LaunchPlanner.";
+            if (result == null) return "Cannot read the generated launcher.";
+            if (!Save(result)) return "Cannot write the vessel to GameData/LaunchPlanner.";
             EditorLogic.LoadShipFromFile(LastCraftPath);
             return null;
         }
 
-        /// <summary>Conduite de carburant FTX-2 si elle est débloquée.</summary>
+        /// <summary>FTX-2 fuel line if unlocked.</summary>
         static PartInfo FuelLine()
         {
             AvailablePart ap = PartLoader.getPartInfoByName("fuelLine");
@@ -116,11 +116,11 @@ namespace LaunchPlanner
             return p.partInfo.name + "_" + p.craftID;
         }
 
-        /// <summary>Ajoute le lanceur sous la charge utile, dans le vaisseau sauvegardé tel que l'éditeur l'enregistre.</summary>
+        /// <summary>Adds the launcher under the payload, in the saved vessel as the editor records it.</summary>
         static string AttachUnder(ShipConstruct ship, CraftBuilder builder, List<CraftPart> parts, out ConfigNode result)
         {
             result = null;
-            // Nœud empilé libre, tourné vers le bas, le plus bas du vaisseau.
+            // Free stack node, facing down, the lowest on the vessel.
             Part host = null;
             AttachNode hostNode = null;
             Vector3 hostPoint = Vector3.zero;
@@ -134,30 +134,30 @@ namespace LaunchPlanner
                     if (host == null || point.y < hostPoint.y) { host = p; hostNode = n; hostPoint = point; }
                 }
             if (host == null)
-                return "Ta charge utile n'a pas de nœud libre en bas : retire ce qui est fixé sous sa dernière pièce, puis recommence.";
+                return "Your payload has no free node at the bottom: remove whatever is attached under its last part, then try again.";
 
             CraftPart root = parts[0];
             double rootTop = root.Shape.TopNode != null ? root.Shape.TopY : root.Shape.Height / 2;
             Vec3 offset = new Vec3(hostPoint.x - root.Pos.X, hostPoint.y - rootTop - root.Pos.Y, hostPoint.z - root.Pos.Z);
 
-            // Les étages de la charge utile restent les derniers ; ceux du lanceur passent avant.
+            // The payload's stages stay last; the launcher's come before them.
             int payloadStages = 0;
             foreach (Part p in ship.parts) payloadStages = Math.Max(payloadStages, p.inverseStage + 1);
 
             ConfigNode shipNode = ship.SaveShip();
             Backup(shipNode);
             ConfigNode launcher = ConfigNode.Parse(CraftWriter.Write(builder, parts, ship.shipName, GameVersion(), offset, payloadStages).ToText());
-            if (launcher == null) return "Lecture du lanceur généré impossible.";
+            if (launcher == null) return "Cannot read the generated launcher.";
 
             string hostKey = Key(host);
             ConfigNode hostPart = null;
             foreach (ConfigNode n in shipNode.GetNodes("PART"))
                 if (n.GetValue("part") == hostKey) hostPart = n;
-            if (hostPart == null) return "Pièce de la charge utile introuvable dans le vaisseau sauvegardé.";
+            if (hostPart == null) return "Payload part not found in the saved vessel.";
 
             ConfigNode[] launcherParts = launcher.GetNodes("PART");
             ConfigNode rootNode = launcherParts[0];
-            // Le découpleur du haut devient l'enfant de la pièce la plus basse de la charge utile.
+            // The top decoupler becomes a child of the payload's lowest part.
             Vector3 rootWorld = new Vector3((float)(root.Pos.X + offset.X), (float)(root.Pos.Y + offset.Y), (float)(root.Pos.Z + offset.Z));
             Quaternion rootRot = Quaternion.AngleAxis((float)root.Yaw, Vector3.up);
             Vector3 local = host.transform.InverseTransformPoint(rootWorld);
@@ -172,17 +172,17 @@ namespace LaunchPlanner
             return null;
         }
 
-        /// <summary>Copie du vaisseau avant l'ajout du lanceur, pour revenir en arrière (vaisseau « Avant lanceur » de la partie).</summary>
+        /// <summary>Copy of the vessel before the launcher is added, to go back (the "Before launcher" vessel of the save).</summary>
         static void Backup(ConfigNode shipNode)
         {
             try
             {
-                // Dans les vaisseaux de la partie : il se recharge depuis le bouton « Charger » de l'éditeur.
+                // In the save's vessels: it can be reloaded from the editor's "Load" button.
                 string dir = Path.Combine(KSPUtil.ApplicationRootPath, "saves/" + HighLogic.SaveFolder + "/Ships/VAB");
                 Directory.CreateDirectory(dir);
-                BackupPath = Path.Combine(dir, "Avant lanceur.craft");
+                BackupPath = Path.Combine(dir, "Before launcher.craft");
                 ConfigNode copy = shipNode.CreateCopy();
-                copy.SetValue("ship", "Avant lanceur", true);
+                copy.SetValue("ship", "Before launcher", true);
                 copy.Save(BackupPath);
             }
             catch (Exception e)
@@ -203,14 +203,14 @@ namespace LaunchPlanner
             }
         }
 
-        /// <summary>Vaisseau complet chargé dans l'éditeur, gardé pour comprendre un problème (GameData/LaunchPlanner/dernier-lanceur.craft).</summary>
+        /// <summary>Complete vessel loaded in the editor, kept to understand a problem (GameData/LaunchPlanner/last-launcher.craft).</summary>
         static bool Save(ConfigNode ship)
         {
             try
             {
                 string dir = Path.Combine(KSPUtil.ApplicationRootPath, "GameData/LaunchPlanner");
                 Directory.CreateDirectory(dir);
-                LastCraftPath = Path.Combine(dir, "dernier-lanceur.craft");
+                LastCraftPath = Path.Combine(dir, "last-launcher.craft");
                 ship.Save(LastCraftPath);
                 return true;
             }

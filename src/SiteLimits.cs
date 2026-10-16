@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace LaunchPlanner
 {
-    /// <summary>Limites du VAB (nombre de pièces) et du pas de tir (taille, masse) selon le niveau des bâtiments.</summary>
+    /// <summary>VAB limits (part count) and launch pad limits (size, mass) according to the building levels.</summary>
     public static class SiteLimits
     {
         public static string Describe = "";
@@ -16,7 +16,7 @@ namespace LaunchPlanner
                 GameVariables vars = GameVariables.Instance;
                 if (vars != null)
                 {
-                    // En bac à sable, les bâtiments sont au niveau maximal : pas de limite.
+                    // In sandbox, buildings are at maximum level: no limit.
                     float vab = ScenarioUpgradeableFacilities.GetFacilityLevel(SpaceCenterFacility.VehicleAssemblyBuilding);
                     float pad = ScenarioUpgradeableFacilities.GetFacilityLevel(SpaceCenterFacility.LaunchPad);
                     int parts = vars.GetPartCountLimit(vab, true);
@@ -34,7 +34,7 @@ namespace LaunchPlanner
                 Debug.LogException(e);
             }
 
-            // Volume dans lequel l'éditeur laisse construire.
+            // Volume in which the editor allows building.
             try
             {
                 EditorBounds bounds = EditorBounds.Instance;
@@ -52,11 +52,11 @@ namespace LaunchPlanner
             }
 
             System.Collections.Generic.List<string> parts2 = new System.Collections.Generic.List<string>();
-            if (req.MaxHeight > 0) parts2.Add(string.Format("hauteur {0:0.#} m", req.MaxHeight));
-            if (req.MaxWidth > 0) parts2.Add(string.Format("largeur {0:0.#} m", req.MaxWidth));
-            if (req.MaxParts > 0) parts2.Add(req.MaxParts + " pièces");
+            if (req.MaxHeight > 0) parts2.Add(string.Format("height {0:0.#} m", req.MaxHeight));
+            if (req.MaxWidth > 0) parts2.Add(string.Format("width {0:0.#} m", req.MaxWidth));
+            if (req.MaxParts > 0) parts2.Add(req.MaxParts + " parts");
             if (req.MaxMass > 0) parts2.Add(string.Format("{0:0.#} t", req.MaxMass));
-            Describe = parts2.Count > 0 ? string.Join(" · ", parts2.ToArray()) : "aucune";
+            Describe = parts2.Count > 0 ? string.Join(" · ", parts2.ToArray()) : "none";
         }
     }
 }

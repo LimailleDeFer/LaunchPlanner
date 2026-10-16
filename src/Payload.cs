@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace LaunchPlanner
 {
-    /// <summary>La charge utile : le vaisseau actuellement ouvert dans l'éditeur (atterrisseur, module de retour…).</summary>
+    /// <summary>The payload: the vessel currently open in the editor (lander, return module...).</summary>
     public class Payload
     {
         public bool Present;
@@ -38,7 +38,7 @@ namespace LaunchPlanner
             p.DryMassT = dry;
             p.MassT = dry + fuel;
 
-            // Δv calculé par le jeu (application Δv de KSP), dans le vide.
+            // Delta-v computed by the game (KSP's delta-v app), in vacuum.
             VesselDeltaV dv = ship.vesselDeltaV;
             if (dv != null && dv.IsReady)
             {

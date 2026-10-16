@@ -1,123 +1,123 @@
-# LaunchPlanner : planificateur de lanceur pour KSP 1.12.5
+# LaunchPlanner: launcher planner for KSP 1.12.5
 
-Mod pour Kerbal Space Program 1.12.5 (avec ou sans Making History et Breaking Ground) qui propose la configuration
-d'un lanceur (étages, moteurs, carburant, boosters) selon la charge utile et l'objectif de la mission, en n'utilisant
-que les pièces débloquées, y compris celles des autres mods.
+A mod for Kerbal Space Program 1.12.5 (with or without Making History and Breaking Ground) that proposes a launcher
+configuration (stages, engines, fuel, boosters) based on your payload and mission goal, using only unlocked parts,
+including those from other mods.
 
-## Avancement
+## Progress
 
-1. **Inventaire des pièces (fait)** : onglet « Pièces disponibles », qui liste les moteurs, boosters, réservoirs
-   (y compris les réservoirs commutables B9PartSwitch / CryoTanks) et découpleurs chargés, avec poussée, Isp,
-   masses et carburant.
-2. **Budget Δv de la mission (fait)** : onglet « Mission ». On choisit la destination et le type de mission ;
-   le vaisseau ouvert dans l'éditeur sert de charge utile. Le lanceur l'amène toujours jusqu'en orbite de la
-   destination ; le Δv propre de la charge utile ne sert qu'à ce qu'elle fait sur place (atterrissage, remontée,
-   retour), jamais au trajet. Une case par étape permet de choisir soi-même ce que fait la charge utile.
-3. **Recommandation du lanceur (fait)** : onglet « Lanceurs ». Cinq variantes côte à côte (SSTO, deux étages,
-   boosters à poudre, boosters liquides, asperges), chacune avec ses pièces exactes, sa masse, son coût,
-   son Δv et son TWR par étage.
-4. **Construction automatique dans le VAB (fait)** : le bouton « Construire dans l'éditeur » assemble la variante
-   choisie (réservoirs, moteurs, découpleurs, boosters, étages) et la met en main, prête à être fixée sous la charge utile.
+1. **Parts inventory (done)**: the "Available parts" tab lists the loaded engines, boosters, tanks
+   (including switchable B9PartSwitch / CryoTanks tanks) and decouplers, with thrust, Isp,
+   masses and fuel.
+2. **Mission delta-v budget (done)**: the "Mission" tab. Pick the destination and the mission type;
+   the vessel open in the editor is used as the payload. The launcher always takes it to orbit around the
+   destination; the payload's own delta-v is only used for what it does on site (landing, ascent,
+   return), never for the trip. A checkbox per phase lets you choose what the payload does yourself.
+3. **Launcher recommendation (done)**: the "Launchers" tab. Five variants side by side (SSTO, two stages,
+   solid boosters, liquid boosters, asparagus), each with its exact parts, mass, cost,
+   delta-v and TWR per stage.
+4. **Automatic construction in the VAB (done)**: the "Build in the editor" button assembles the chosen variant
+   (tanks, engines, decouplers, boosters, staging) and attaches it under the payload.
 
 ## Installation
 
-1. Télécharger `LaunchPlanner.zip`.
-2. Le décompresser dans le dossier du jeu : on doit obtenir `Kerbal Space Program/GameData/LaunchPlanner/Plugins/LaunchPlanner.dll`.
-3. Lancer KSP, ouvrir une partie et entrer dans le VAB ou le SPH.
-4. Cliquer sur le bouton en forme de fusée dans la barre d'outils en bas à droite.
+1. Download `LaunchPlanner.zip`.
+2. Extract it into the game folder: you should get `Kerbal Space Program/GameData/LaunchPlanner/Plugins/LaunchPlanner.dll`.
+3. Start KSP, open a save and enter the VAB or SPH.
+4. Click the rocket-shaped button in the toolbar at the bottom right.
 
-## Utilisation (étape 2)
+## Usage (step 2)
 
-1. Dans le VAB, charge le vaisseau qui sera la charge utile (par exemple l'atterrisseur et son module de retour).
-2. Ouvre la fenêtre avec le bouton fusée, onglet « Mission ».
-3. Choisis la destination dans la liste de gauche et le type de mission (orbite, atterrissage, avec ou sans retour).
-4. Le tableau détaille chaque étape avec son Δv et indique si elle est assurée par la charge utile ou par le
-   lanceur. En bas s'affiche ce que le lanceur doit fournir.
+1. In the VAB, load the vessel that will be the payload (for example the lander and its return module).
+2. Open the window with the rocket button, "Mission" tab.
+3. Pick the destination in the list on the left and the mission type (orbit, landing, with or without return).
+4. The table details each phase with its delta-v and shows whether it is handled by the payload or by the
+   launcher. At the bottom, it shows what the launcher must provide.
 
-Le Δv propre de la charge utile vient du calcul du jeu (dans le vide). On peut aussi le saisir à la main.
-Le budget est une estimation par transferts de Hohmann, proche de la carte Δv communautaire ; la marge
-(10 % par défaut) couvre les changements de plan et les corrections.
+The payload's own delta-v comes from the game's calculation (in vacuum). You can also enter it by hand.
+The budget is an estimate based on Hohmann transfers, close to the community delta-v map; the margin
+(10% by default) covers plane changes and corrections.
 
-## Utilisation (étape 3)
+## Usage (step 3)
 
-1. Règle la mission dans l'onglet « Mission » (destination, type, marge).
-2. Ouvre l'onglet « Lanceurs » : le calcul démarre tout seul et se refait quand la mission ou la charge utile change.
-3. Chaque carte montre une variante, étages listés du haut vers le bas : moteurs, réservoirs, découpleurs,
-   boosters, avec la masse, le coût, le Δv et le TWR de chaque étage. La plus légère (ou la moins chère)
-   est marquée « recommandée ».
-4. Réglages : optimiser la masse ou le coût, TWR minimal au décollage (1,3 par défaut). Sans vaisseau dans
-   l'éditeur, on saisit la masse de la charge utile à la main.
-5. « Choisir cette variante » retient le lanceur, puis « Construire dans l'éditeur » l'assemble.
+1. Set up the mission in the "Mission" tab (destination, type, margin).
+2. Open the "Launchers" tab: the computation starts by itself and is redone when the mission or the payload changes.
+3. Each card shows one variant, with stages listed from top to bottom: engines, tanks, decouplers,
+   boosters, with the mass, cost, delta-v and TWR of each stage. The lightest (or cheapest)
+   is marked "recommended".
+4. Settings: optimize for mass or cost, minimum liftoff TWR (1.3 by default). With no vessel in
+   the editor, enter the payload mass by hand.
+5. "Choose this variant" selects the launcher, then "Build in the editor" assembles it.
 
-## Utilisation (étape 4)
+## Usage (step 4)
 
-1. Dans l'onglet « Lanceurs », choisis une variante puis clique « Construire dans l'éditeur ».
-2. Le lanceur est fixé sous la pièce la plus basse de ta charge utile (nœud du bas libre) et le vaisseau est rechargé,
-   séquence d'étages comprise : décollage, largage des boosters, chaque étage, puis les étages de la charge utile.
-   Sans vaisseau dans l'éditeur, le lanceur seul devient le vaisseau.
-3. Pour revenir en arrière, charge le vaisseau « Avant lanceur » (copie enregistrée juste avant).
+1. In the "Launchers" tab, choose a variant then click "Build in the editor".
+2. The launcher is attached under the lowest part of your payload (free bottom node) and the vessel is reloaded,
+   staging sequence included: liftoff, booster drop, each stage, then the payload's stages.
+   With no vessel in the editor, the launcher alone becomes the vessel.
+3. To go back, load the "Before launcher" vessel (a copy saved just before).
 
-Détails du montage :
-- les réservoirs commutables (B9PartSwitch, CryoTanks) sont réglés sur le bon contenu ;
-- au-delà d'un moteur par étage, les moteurs du premier étage sont montés sous un coupleur multiple débloqué
-  (bi, tri ou quadri) à la taille du réservoir ; sans coupleur qui convient, ils sont fixés en grappe sous le réservoir ;
-- chaque booster est coiffé d'un cône de nez débloqué à sa taille, sauf si son réservoir (ou son propulseur) a déjà
-  une pointe ; un réservoir à nez n'est jamais empilé sous une autre pièce ;
-- le découpleur sous la charge utile prend la taille de son nœud du bas ;
-- en asperges, des conduites de carburant (FTX-2, si débloquées) relient chaque paire de boosters à la suivante,
-  puis la dernière au corps central ; sinon le transfert passe par les découpleurs radiaux ;
-- chaque booster porte des fusées de séparation (Sepratron I, ou la plus proche débloquée), moitié en haut, moitié
-  en bas, en nombre adapté à sa masse à vide ; elles s'allument avec son découpleur et l'écartent de la fusée ;
-- pour une mission avec atterrissage, si le Δv de la charge utile ne couvre pas la descente (et la suite), un étage
-  atterrisseur est ajouté sous elle : moteur à vide, ergols qui se conservent, TWR ≥ 2 face à la gravité de la
-  destination, quatre jambes d'atterrissage ; le lanceur emporte alors la charge utile et l'atterrisseur ;
-- une copie du dernier lanceur généré est écrite dans `GameData/LaunchPlanner/dernier-lanceur.craft` : à joindre
-  avec `KSP.log` en cas de problème.
+Assembly details:
+- switchable tanks (B9PartSwitch, CryoTanks) are set to the right contents;
+- beyond one engine per stage, the first-stage engines are mounted under an unlocked multi-coupler
+  (bi, tri or quad) sized to the tank; if no suitable coupler exists, they are attached in a cluster under the tank;
+- each booster is capped with an unlocked nose cone of its size, unless its tank (or motor) already
+  has a point; a nose tank is never stacked under another part;
+- the decoupler under the payload takes the size of its bottom node;
+- in asparagus staging, fuel lines (FTX-2, if unlocked) connect each booster pair to the next,
+  then the last pair to the core; otherwise fuel transfers through the radial decouplers;
+- each booster carries separation motors (Sepratron I, or the closest unlocked one), half at the top, half
+  at the bottom, in a number suited to its dry mass; they ignite with its decoupler and push it away from the rocket;
+- for a mission with a landing, if the payload's delta-v does not cover the descent (and what follows), a lander
+  stage is added under it: vacuum engine, storable propellants, TWR ≥ 2 against the destination's
+  gravity, four landing legs; the launcher then carries the payload and the lander;
+- a copy of the last generated launcher is written to `GameData/LaunchPlanner/last-launcher.craft`: attach it
+  with `KSP.log` if you report a problem.
 
-Seules les pièces débloquées sont utilisées. Le calcul suppose un lanceur empilé ; les boosters sont montés
-sur des découpleurs radiaux.
+Only unlocked parts are used. The computation assumes a stacked launcher; boosters are mounted
+on radial decouplers.
 
-Forme du lanceur :
-- chaque étage prend le diamètre qui le remplit avec peu de réservoirs (un réservoir principal répété, au plus
-  un réservoir de complément), sans être plus étroit que l'étage qu'il porte : la base est large et le lanceur
-  s'affine vers le haut ;
-- quand l'étage du dessous est plus large, un réservoir adaptateur débloqué coiffe l'étage ; sinon une note
-  demande d'ajouter un adaptateur structurel ;
-- les limites du VAB (nombre de pièces) et du pas de tir (hauteur, largeur, masse) selon le niveau des bâtiments
-  sont respectées, charge utile comprise ; un lanceur trop haut est repris avec des réservoirs plus larges.
-  En bac à sable, il n'y a pas de limite.
+Launcher shape:
+- each stage takes the diameter that fills it with few tanks (a repeated main tank, at most
+  one extra tank), without being narrower than the stage it carries: the base is wide and the launcher
+  narrows toward the top;
+- when the stage below is wider, an unlocked adapter tank caps the stage; otherwise a note
+  asks you to add a structural adapter;
+- the limits of the VAB (part count) and of the launch pad (height, width, mass) according to the building levels
+  are respected, payload included; a launcher that is too tall is redone with wider tanks.
+  In sandbox mode, there are no limits.
 
-## Ce qu'il faut vérifier (étape 1)
+## What to check (step 1)
 
-- La fenêtre s'ouvre et l'onglet « Moteurs » affiche des valeurs cohérentes (par exemple le LV-T45 « Swivel » :
-  environ 168 / 215 kN et 250 / 320 s).
-- La ligne « Origine » cite bien tes mods de pièces.
-- En carrière, seules les pièces achetées s'affichent (la case « Afficher aussi les pièces non débloquées » montre le reste).
+- The window opens and the "Engines" tab shows consistent values (for example the LV-T45 "Swivel":
+  about 168 / 215 kN and 250 / 320 s).
+- The "Source" line lists your part mods correctly.
+- In career, only purchased parts are shown (the "Also show locked parts" checkbox shows the rest).
 
-En cas de problème, envoyer le fichier `KSP.log` (dossier du jeu) et, si la fenêtre s'ouvre, le fichier
-`GameData/LaunchPlanner/inventaire.csv` créé par le bouton « Exporter CSV ».
+If you run into a problem, send the `KSP.log` file (game folder) and, if the window opens, the
+`GameData/LaunchPlanner/inventory.csv` file created by the "Export CSV" button.
 
-## Compilation
+## Building
 
 ```
 sudo apt install mono-mcs zip
-KSPDIR=~/KSP ./build.sh       # dossier qui contient KSP_x64_Data/Managed
+KSPDIR=~/KSP ./build.sh       # folder containing KSP_x64_Data/Managed
 ```
 
-Il faut au minimum `Assembly-CSharp.dll`, `UnityEngine.CoreModule.dll` et `UnityEngine.IMGUIModule.dll`.
-Les modules Unity cités par le jeu mais inutiles au mod sont remplacés par les stubs vides de `stubs/extra`.
-B9PartSwitch est lu par réflexion : il n'est pas nécessaire pour compiler.
+You need at least `Assembly-CSharp.dll`, `UnityEngine.CoreModule.dll` and `UnityEngine.IMGUIModule.dll`.
+Unity modules referenced by the game but unused by the mod are replaced by the empty stubs in `stubs/extra`.
+B9PartSwitch is read through reflection: it is not needed to build.
 
-Tests du calcul de Δv (comparés à la carte Δv communautaire) :
+Delta-v computation tests (compared with the community delta-v map):
 
 ```
 mcs tests/MissionBudgetTest.cs src/MissionBudget.cs -out:build/test.exe && mono build/test.exe
 ```
 
-Essai du calcul des lanceurs hors du jeu, à partir d'un `inventaire.csv` exporté par le mod
-(arguments : masse de la charge utile en t, Δv en m/s, et `stock` pour se limiter aux pièces du jeu de base) :
+Trying the launcher computation outside the game, from an `inventory.csv` exported by the mod
+(arguments: payload mass in t, delta-v in m/s, and `stock` to restrict to stock parts):
 
 ```
 mcs tests/LauncherDesignerTest.cs src/LauncherDesigner.cs src/PartInfo.cs src/CraftBuilder.cs src/CraftWriter.cs -out:build/designer.exe
-mono build/designer.exe inventaire.csv 5 4500
+mono build/designer.exe inventory.csv 5 4500
 ```

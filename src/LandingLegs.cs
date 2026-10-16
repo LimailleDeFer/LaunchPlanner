@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 namespace LaunchPlanner
 {
-    /// <summary>Jambes d'atterrissage débloquées, pour l'étage atterrisseur.</summary>
+    /// <summary>Unlocked landing legs, for the lander stage.</summary>
     public static class LandingLegs
     {
         public static List<PartInfo> Unlocked()

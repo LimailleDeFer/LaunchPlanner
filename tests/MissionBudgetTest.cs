@@ -1,4 +1,4 @@
-// Vérifie le calcul du budget Δv avec les valeurs du système de Kerbol, à comparer à la carte communautaire.
+// Checks the delta-v budget computation with Kerbol system values, to compare against the community map.
 //   mcs tests/MissionBudgetTest.cs src/MissionBudget.cs -out:build/test.exe && mono build/test.exe
 using System;
 using LaunchPlanner;
@@ -17,7 +17,7 @@ static class MissionBudgetTest
     {
         bool ok = Math.Abs(actual - expected) <= tolerance;
         if (!ok) failures++;
-        Console.WriteLine("{0,-4} {1,-38} {2,7:0} m/s (attendu ≈ {3:0} ± {4:0})", ok ? "OK" : "ÉCHEC", what, actual, expected, tolerance);
+        Console.WriteLine("{0,-4} {1,-38} {2,7:0} m/s (expected ≈ {3:0} ± {4:0})", ok ? "OK" : "FAIL", what, actual, expected, tolerance);
     }
 
     static int Main()
@@ -35,30 +35,30 @@ static class MissionBudgetTest
 
         double o, c, i, rc; string note;
         MissionBudget.Transfer(kerbin, mun, out o, out c, out i, out rc, out note);
-        Expect("Kerbin → Mun : injection", o, 860, 30);
-        Expect("Kerbin → Mun : capture", c, 310, 30);
+        Expect("Kerbin → Mun: injection", o, 860, 30);
+        Expect("Kerbin → Mun: capture", c, 310, 30);
         MissionBudget.Transfer(kerbin, minmus, out o, out c, out i, out rc, out note);
-        Expect("Kerbin → Minmus : injection (sans plan)", o, 930, 40);
-        Expect("Kerbin → Minmus : capture", c, 160, 40);
+        Expect("Kerbin → Minmus: injection (no plane change)", o, 930, 40);
+        Expect("Kerbin → Minmus: capture", c, 160, 40);
         MissionBudget.Transfer(kerbin, duna, out o, out c, out i, out rc, out note);
-        Expect("Kerbin → Duna : éjection", o, 1060, 60);
-        Expect("Kerbin → Duna : capture", c, 610, 80);
+        Expect("Kerbin → Duna: ejection", o, 1060, 60);
+        Expect("Kerbin → Duna: capture", c, 610, 80);
         MissionBudget.Transfer(kerbin, eve, out o, out c, out i, out rc, out note);
-        Expect("Kerbin → Eve : éjection", o, 1080, 60);
+        Expect("Kerbin → Eve: ejection", o, 1080, 60);
         MissionBudget.Transfer(kerbin, laythe, out o, out c, out i, out rc, out note);
-        Expect("Kerbin → Laythe : éjection", o, 1910, 100);
+        Expect("Kerbin → Laythe: ejection", o, 1910, 100);
 
         Budget mission = MissionBudget.Compute(kerbin, mun, MissionType.LandingReturn, 0, 0);
-        Expect("Mun aller-retour avec atterrissage", mission.Total, 3400 + 860 + 310 + 580 + 580 + 310, 80);
+        Expect("Mun round trip with landing", mission.Total, 3400 + 860 + 310 + 580 + 580 + 310, 80);
 
         Budget withPayload = MissionBudget.Compute(kerbin, mun, MissionType.LandingReturn, 0.1, 2000);
-        Expect("Lanceur = total + marge − charge utile", withPayload.LauncherDeltaV, withPayload.TotalWithMargin - 2000, 1);
+        Expect("Launcher = total + margin − payload", withPayload.LauncherDeltaV, withPayload.TotalWithMargin - 2000, 1);
 
         Budget jl = MissionBudget.Compute(kerbin, jool, MissionType.Landing, 0, 0);
-        Console.WriteLine("Avertissement Jool : " + string.Join(" | ", jl.Warnings.ToArray()));
+        Console.WriteLine("Jool warning: " + string.Join(" | ", jl.Warnings.ToArray()));
         if (jl.Warnings.Count == 0) failures++;
 
-        Console.WriteLine(failures == 0 ? "Tous les tests passent." : failures + " échec(s).");
+        Console.WriteLine(failures == 0 ? "All tests pass." : failures + " failure(s).");
         return failures == 0 ? 0 : 1;
     }
 }

@@ -3,19 +3,19 @@ using System.Collections.Generic;
 
 namespace LaunchPlanner
 {
-    /// <summary>Ce que le constructeur doit savoir de la forme d'une pièce (lu sur le modèle de la pièce dans le jeu).</summary>
+    /// <summary>What the builder needs to know about a part's shape (read from the part's model in the game).</summary>
     public class PartShape
     {
-        public string TopNode;          // nœud empilé du haut (null s'il n'y en a pas)
-        public string BottomNode;       // nœud empilé du bas
-        public double TopY, BottomY;    // hauteur de ces nœuds dans le repère de la pièce
-        public Vec3 SrfPos;             // point de fixation en surface
-        public Vec3 SrfDir = new Vec3(0, 0, 1);   // direction du nœud de surface
+        public string TopNode;          // top stack node (null if none)
+        public string BottomNode;       // bottom stack node
+        public double TopY, BottomY;    // height of these nodes in the part's frame
+        public Vec3 SrfPos;             // surface attach point
+        public Vec3 SrfDir = new Vec3(0, 0, 1);   // direction of the surface node
         public double Diameter = 1.25;
-        public List<string> Modules = new List<string>();      // noms des modules, dans l'ordre du modèle
-        public List<string> ModuleIds = new List<string>();    // moduleID (B9PartSwitch), "" sinon
-        public Vec3 ExhaustDir = new Vec3(0, -1, 0);           // sortie des gaz d'un moteur, dans le repère de la pièce
-        public List<string> OutputNodes = new List<string>();  // coupleur multiple : nœuds du bas
+        public List<string> Modules = new List<string>();      // module names, in model order
+        public List<string> ModuleIds = new List<string>();    // moduleID (B9PartSwitch), "" otherwise
+        public Vec3 ExhaustDir = new Vec3(0, -1, 0);           // exhaust direction of an engine, in the part's frame
+        public List<string> OutputNodes = new List<string>();  // multi-coupler: bottom nodes
         public List<Vec3> OutputPos = new List<Vec3>();
 
         public double Height { get { return TopNode != null && BottomNode != null ? TopY - BottomY : Diameter; } }
@@ -36,7 +36,7 @@ namespace LaunchPlanner
         public static Vec3 operator -(Vec3 a, Vec3 b) { return new Vec3(a.X - b.X, a.Y - b.Y, a.Z - b.Z); }
         public static Vec3 operator *(Vec3 a, double k) { return new Vec3(a.X * k, a.Y * k, a.Z * k); }
 
-        /// <summary>Rotation autour de l'axe vertical, dans le sens de Unity (de +Z vers +X).</summary>
+        /// <summary>Rotation around the vertical axis, in Unity's direction (from +Z toward +X).</summary>
         public Vec3 Yaw(double degrees)
         {
             double a = degrees * Math.PI / 180, c = Math.Cos(a), s = Math.Sin(a);
@@ -51,7 +51,7 @@ namespace LaunchPlanner
         public static Vec3 Cross(Vec3 a, Vec3 b) { return new Vec3(a.Y * b.Z - a.Z * b.Y, a.Z * b.X - a.X * b.Z, a.X * b.Y - a.Y * b.X); }
     }
 
-    /// <summary>Quaternion au sens de Unity (x, y, z, w), pour les pièces qui ne sont pas seulement tournées autour de la verticale.</summary>
+    /// <summary>Quaternion in Unity's convention (x, y, z, w), for parts that are not only rotated around the vertical.</summary>
     public struct Quat
     {
         public double X, Y, Z, W;
@@ -64,7 +64,7 @@ namespace LaunchPlanner
             return new Quat(0, Math.Sin(a), 0, Math.Cos(a));
         }
 
-        /// <summary>Plus petite rotation qui amène la direction `from` sur `to`.</summary>
+        /// <summary>Smallest rotation that takes direction `from` onto `to`.</summary>
         public static Quat FromTo(Vec3 from, Vec3 to)
         {
             Vec3 a = from.Unit, b = to.Unit;
@@ -116,19 +116,19 @@ namespace LaunchPlanner
         public PartInfo Info;
         public PartShape Shape;
         public Vec3 Pos;
-        public double Yaw;                  // rotation autour de la verticale, en degrés
-        public Quat? Tilted;                // rotation complète, quand la pièce n'est pas droite (fusées de séparation)
+        public double Yaw;                  // rotation around the vertical, in degrees
+        public Quat? Tilted;                // full rotation, when the part is not upright (separation motors)
         public CraftPart Parent;
         public AttachKind Attach = AttachKind.Root;
-        public string SelfNode;             // nœud de cette pièce tourné vers le parent
-        public string ParentNode;           // nœud du parent (fixation empilée)
+        public string SelfNode;             // this part's node facing the parent
+        public string ParentNode;           // parent's node (stack attachment)
         public readonly List<CraftPart> Children = new List<CraftPart>();
         public readonly List<CraftPart> Symmetry = new List<CraftPart>();
-        public int Activation = -1;         // rang d'activation (0 = premier appui sur espace), -1 si la pièce n'a pas d'icône
-        public int Separation = -1;         // rang d'activation du découpleur qui largue cette pièce
-        public bool Crossfeed;              // découpleur radial des asperges : laisse passer le carburant
-        public CraftPart FuelTarget;        // conduite de carburant : pièce alimentée
-        public Vec3 TargetPoint;            // conduite de carburant : point d'arrivée sur la pièce alimentée
+        public int Activation = -1;         // activation rank (0 = first press of space), -1 if the part has no stage icon
+        public int Separation = -1;         // activation rank of the decoupler that drops this part
+        public bool Crossfeed;              // radial decoupler of asparagus staging: lets fuel through
+        public CraftPart FuelTarget;        // fuel line: part being fed
+        public Vec3 TargetPoint;            // fuel line: end point on the fed part
 
         public string Key { get { return Info.Name + "_" + Id; } }
 
@@ -136,9 +136,9 @@ namespace LaunchPlanner
     }
 
     /// <summary>
-    /// Transforme une variante de lanceur en liste de pièces placées et reliées, prête à devenir un vaisseau.
-    /// La racine est le découpleur sous la charge utile (ou le premier réservoir du dernier étage), son nœud du haut
-    /// reste libre pour accrocher la charge utile.
+    /// Turns a launcher variant into a list of placed and connected parts, ready to become a vessel.
+    /// The root is the decoupler under the payload (or the first tank of the last stage); its top node
+    /// stays free to attach the payload.
     /// </summary>
     public class CraftBuilder
     {
@@ -148,7 +148,7 @@ namespace LaunchPlanner
         uint nextId = 100001;
         int actions;
 
-        /// <summary>Conduite de carburant débloquée (FTX-2) pour les asperges ; null pour passer par les découpleurs.</summary>
+        /// <summary>Unlocked fuel line (FTX-2) for asparagus staging; null to go through the decouplers.</summary>
         public PartInfo FuelLine;
 
         public CraftBuilder(IPartShapes shapes)
@@ -158,7 +158,7 @@ namespace LaunchPlanner
 
         public static double DiameterOf(string size)
         {
-            // size0 = 0,625 m, size1 = 1,25 m, size1p5 = 1,875 m, size2 = 2,5 m…
+            // size0 = 0.625 m, size1 = 1.25 m, size1p5 = 1.875 m, size2 = 2.5 m...
             if (string.IsNullOrEmpty(size) || !size.StartsWith("size")) return 1.25;
             double v;
             if (!double.TryParse(size.Substring(4).Replace('p', '.'), System.Globalization.NumberStyles.Float,
@@ -180,7 +180,7 @@ namespace LaunchPlanner
             parent.Children.Add(child);
         }
 
-        /// <summary>Accroche `child` sous `parent` (nœud du bas du parent contre nœud du haut de l'enfant).</summary>
+        /// <summary>Attaches `child` below `parent` (parent's bottom node against the child's top node).</summary>
         CraftPart StackBelow(CraftPart parent, PartInfo info)
         {
             CraftPart c = Make(info);
@@ -195,8 +195,8 @@ namespace LaunchPlanner
         }
 
         /// <summary>
-        /// Fixe `child` en surface au point `point` d'une surface de normale `outward`, avec la même règle que l'éditeur :
-        /// rotation = LookRotation(normale) × LookRotation(direction du nœud de surface).
+        /// Attaches `child` to a surface at `point` on a surface with normal `outward`, using the same rule as the editor:
+        /// rotation = LookRotation(normal) × LookRotation(direction of the surface node).
         /// </summary>
         CraftPart SurfaceAt(CraftPart parent, PartInfo info, Vec3 point, Vec3 outward)
         {
@@ -208,7 +208,7 @@ namespace LaunchPlanner
             return c;
         }
 
-        /// <summary>Pose `child` sur `parent` (nœud du haut du parent contre nœud du bas de l'enfant, ou son seul nœud).</summary>
+        /// <summary>Places `child` on top of `parent` (parent's top node against the child's bottom node, or its only node).</summary>
         CraftPart StackAbove(CraftPart parent, PartInfo info)
         {
             CraftPart c = Make(info);
@@ -232,8 +232,8 @@ namespace LaunchPlanner
             Notes.Clear();
             int k = d.Stages.Count;
 
-            // Rangs d'activation : moteurs du premier étage et boosters, largage des boosters, puis chaque étage supérieur
-            // (découpleur et allumage ensemble), enfin le largage de la charge utile.
+            // Activation ranks: first-stage engines and boosters, booster drop, then each upper stage
+            // (decoupler and ignition together), finally the payload drop.
             BoosterPlan boosters = d.Stages[0].Boosters;
             int boosterDrops = boosters == null || boosters.Count == 0 ? 0 : boosters.Crossfeed ? boosters.Count / 2 : 1;
             bool lander = d.Lander != null;
@@ -248,7 +248,7 @@ namespace LaunchPlanner
             }
             else
             {
-                Notes.Add("Aucun découpleur sous la charge utile : elle restera attachée au dernier étage.");
+                Notes.Add("No decoupler under the payload: it will stay attached to the last stage.");
                 if (lander) cursor = landerEngine ?? cursor;
             }
 
@@ -266,7 +266,7 @@ namespace LaunchPlanner
                         stageParts.Add(cursor);
                     }
                 int count = s.EngineCount;
-                if (cursor == null) { cursor = Make(s.Engine); count--; }   // étage sans réservoir : le moteur sert de racine
+                if (cursor == null) { cursor = Make(s.Engine); count--; }   // stage without a tank: the engine serves as the root
                 List<CraftPart> engines = AddEngines(cursor, s, count, ignition);
                 stageParts.AddRange(engines);
 
@@ -275,7 +275,7 @@ namespace LaunchPlanner
                     if (boosters != null && boosters.Count > 0) AddBoosters(stageParts, engines, boosters, s);
                     break;
                 }
-                // Le découpleur sous l'étage : sous le moteur central, sinon sous le dernier réservoir (les moteurs l'entourent).
+                // The decoupler under the stage: under the central engine, otherwise under the last tank (the engines surround it).
                 CraftPart below = engines.Count == 1 && engines[0].Attach == AttachKind.Stack ? engines[0] : cursor;
                 if (s.Decoupler != null)
                 {
@@ -286,7 +286,7 @@ namespace LaunchPlanner
                 }
                 else
                 {
-                    Notes.Add("Aucun découpleur débloqué pour séparer l'étage " + (i + 1) + ".");
+                    Notes.Add("No unlocked decoupler to separate stage " + (i + 1) + ".");
                     cursor = below;
                 }
             }
@@ -298,8 +298,8 @@ namespace LaunchPlanner
         CraftPart landerTank, landerEngine;
 
         /// <summary>
-        /// Étage atterrisseur, racine du lanceur : la charge utile se fixe sur son réservoir du haut. Jambes en croix sur le
-        /// réservoir du bas ; le moteur s'allume après le largage du dernier étage du lanceur.
+        /// Lander stage, root of the launcher: the payload attaches to its top tank. Legs in a cross on the
+        /// bottom tank; the engine ignites after the launcher's last stage is dropped.
         /// </summary>
         CraftPart AddLander(LauncherDesign d)
         {
@@ -323,14 +323,14 @@ namespace LaunchPlanner
                     legs.Add(SurfaceAt(cursor, d.LanderLegs, point, outward));
                 }
                 SetSymmetry(legs);
-                Notes.Add(string.Format("Atterrisseur : {0} × {1} (touche G pour les déployer). Vérifie dans l'éditeur qu'elles descendent plus bas que la tuyère.",
+                Notes.Add(string.Format("Lander: {0} × {1} (press G to deploy them). Check in the editor that they extend lower than the nozzle.",
                     d.LanderLegCount, d.LanderLegs.Title));
             }
-            else Notes.Add("Aucune jambe d'atterrissage débloquée : l'atterrisseur se posera sur sa tuyère.");
+            else Notes.Add("No landing legs unlocked: the lander will land on its nozzle.");
             return cursor;
         }
 
-        /// <summary>Découpleur sous l'atterrisseur : sous son moteur central, sinon sous son réservoir (moteurs en couronne).</summary>
+        /// <summary>Decoupler under the lander: under its central engine, otherwise under its tank (engines in a ring).</summary>
         CraftPart StackBelowEngines(CraftPart tank, PartInfo decoupler)
         {
             CraftPart below = landerEngine ?? tank;
@@ -344,7 +344,7 @@ namespace LaunchPlanner
             return dec;
         }
 
-        /// <summary>Moteurs sous le dernier réservoir : un au centre sur le nœud, les autres en couronne fixés en surface.</summary>
+        /// <summary>Engines under the last tank: one at the center on the node, the others in a ring attached to the surface.</summary>
         List<CraftPart> AddEngines(CraftPart tank, StagePlan s, int n, int ignition)
         {
             List<CraftPart> engines = new List<CraftPart>();
@@ -368,10 +368,10 @@ namespace LaunchPlanner
                         e.Activation = ignition;
                         engines.Add(e);
                     }
-                    Notes.Add(string.Format("Les {0} moteurs de {1} sont montés sous un {2}.", n, s.Engine.Title, s.Coupler.Title));
+                    Notes.Add(string.Format("The {0} {1} engines are mounted under a {2}.", n, s.Engine.Title, s.Coupler.Title));
                     return engines;
                 }
-                // Le modèle ne correspond pas à ce que l'inventaire annonçait : on revient à la grappe fixée en surface.
+                // The model does not match what the inventory announced: fall back to the surface-attached cluster.
                 parts.Remove(coupler);
                 tank.Children.Remove(coupler);
             }
@@ -405,8 +405,8 @@ namespace LaunchPlanner
                 engines.Add(e);
             }
             SetSymmetry(group);
-            if (s.EngineCount > 1) Notes.Add(string.Format("Les {0} moteurs de {1} sont fixés en grappe sous le réservoir ; un coupleur multiple " +
-                "(bi, tri ou quadri) donne un montage plus propre.", s.EngineCount, s.Engine.Title));
+            if (s.EngineCount > 1) Notes.Add(string.Format("The {0} {1} engines are attached in a cluster under the tank; a multi-coupler " +
+                "(bi, tri or quad) gives a cleaner mounting.", s.EngineCount, s.Engine.Title));
             return engines;
         }
 
@@ -424,9 +424,9 @@ namespace LaunchPlanner
                 double h = Math.Sqrt(decShape.SrfPos.X * decShape.SrfPos.X + decShape.SrfPos.Z * decShape.SrfPos.Z);
                 decThickness = Math.Max(0.1, Math.Min(0.6, 2 * h));
             }
-            else Notes.Add("Aucun découpleur radial débloqué : les boosters sont fixés directement et ne pourront pas être largués.");
+            else Notes.Add("No radial decoupler unlocked: the boosters are attached directly and cannot be dropped.");
 
-            // Pièces d'un booster, de haut en bas : propulseur à poudre seul, ou réservoirs puis moteur.
+            // Parts of a booster, top to bottom: a solid motor alone, or tanks then engine.
             List<PartInfo> stack = new List<PartInfo>();
             if (b.Solid) stack.Add(b.Part);
             else
@@ -434,9 +434,9 @@ namespace LaunchPlanner
                 foreach (TankUse t in b.Tanks) for (int n = 0; n < t.Count; n++) stack.Add(t.Tank);
                 stack.Add(b.Part);
             }
-            // Hauteur du point de fixation pour que le bas du booster s'aligne sur le bas du corps central.
+            // Height of the attach point so the bottom of the booster lines up with the bottom of the core.
             PartShape topShape = shapes.Get(stack[0]);
-            double drop = 0;   // du centre de la pièce du haut au bas du booster
+            double drop = 0;   // from the center of the top part to the bottom of the booster
             for (int j = 0; j < stack.Count; j++)
             {
                 PartShape sh = shapes.Get(stack[j]);
@@ -464,7 +464,7 @@ namespace LaunchPlanner
                 if (b.Decoupler != null)
                 {
                     CraftPart dec = SurfaceAt(host, b.Decoupler, point, outward);
-                    // Asperges : la paire i et i + n/2 (opposées) est larguée en premier pour i = 0.
+                    // Asparagus: the pair i and i + n/2 (opposite) is dropped first for i = 0.
                     int pair = b.Crossfeed ? i % (b.Count / 2) : 0;
                     dec.Activation = 1 + pair;
                     dec.Crossfeed = b.Crossfeed && FuelLine == null;
@@ -479,7 +479,7 @@ namespace LaunchPlanner
                     cur = StackBelow(cur, stack[j]);
                     mine.Add(cur);
                 }
-                // Le dernier élément est le moteur (ou le propulseur à poudre) : il s'allume au décollage.
+                // The last element is the engine (or solid motor): it ignites at liftoff.
                 cur.Activation = 0;
                 perBooster.Add(mine);
                 CraftPart top = mine[b.Decoupler != null ? 1 : 0];
@@ -498,7 +498,7 @@ namespace LaunchPlanner
             }
             List<List<CraftPart>> separators = AddSeparators(perBooster, b, host);
 
-            // Symétrie : tous les boosters ensemble, ou paire par paire pour les asperges.
+            // Symmetry: all boosters together, or pair by pair for asparagus.
             int groups = b.Crossfeed ? b.Count / 2 : 1;
             for (int g = 0; g < groups; g++)
                 for (int j = 0; j < perBooster[0].Count; j++)
@@ -518,12 +518,12 @@ namespace LaunchPlanner
                 }
             if (b.Crossfeed && FuelLine != null) AddFuelLines(perBooster, b, groups, host);
             else if (b.Crossfeed)
-                Notes.Add("Aucune conduite de carburant débloquée : le transfert passe par les découpleurs radiaux, les paires extérieures se vident en premier.");
+                Notes.Add("No fuel line unlocked: fuel transfers through the radial decouplers, and the outer pairs empty first.");
         }
 
         /// <summary>
-        /// Fusées de séparation : moitié en haut du booster, moitié en bas, côté extérieur, tuyère vers le corps central
-        /// et un peu vers le haut. Elles poussent le booster vide vers l'extérieur et vers l'arrière, à l'allumage de son découpleur.
+        /// Separation motors: half at the top of the booster, half at the bottom, on the outer side, nozzle toward the core
+        /// and slightly upward. They push the empty booster outward and backward when its decoupler fires.
         /// </summary>
         List<List<CraftPart>> AddSeparators(List<List<CraftPart>> perBooster, BoosterPlan b, CraftPart core)
         {
@@ -532,7 +532,7 @@ namespace LaunchPlanner
             if (b.Decoupler == null) return all;
             if (b.SeparatorsEach <= 0 || b.Separator == null)
             {
-                Notes.Add("Aucune fusée de séparation débloquée (Sepratron) : les boosters largués risquent de toucher la fusée.");
+                Notes.Add("No separation motor unlocked (Sepratron): dropped boosters may hit the rocket.");
                 return all;
             }
             int first = 1;
@@ -541,7 +541,7 @@ namespace LaunchPlanner
             {
                 List<CraftPart> mine = perBooster[i];
                 CraftPart topPart = mine[first];
-                // En bas : le dernier réservoir (booster liquide) ou le propulseur à poudre lui-même.
+                // At the bottom: the last tank (liquid booster) or the solid motor itself.
                 CraftPart bottomPart = b.Solid ? mine[mine.Count - 1] : mine[Math.Max(first, mine.Count - 2)];
                 int activation = mine[0].Activation;
                 Vec3 outward = new Vec3(mine[first].Pos.X - core.Pos.X, 0, mine[first].Pos.Z - core.Pos.Z).Unit;
@@ -553,7 +553,7 @@ namespace LaunchPlanner
                     double y = end == 0 ? Top(host) - Math.Min(0.6, 0.15 * span) : Bottom(host) + Math.Min(0.6, 0.15 * span);
                     for (int k = 0; k < perEnd; k++)
                     {
-                        // Sur la face tournée vers le corps central, de part et d'autre du découpleur (±40°).
+                        // On the face turned toward the core, on either side of the decoupler (±40°).
                         double spread = perEnd == 1 ? 0 : -40 + 80.0 * k / (perEnd - 1);
                         Vec3 normal = toCore.Yaw(spread);
                         Vec3 point = new Vec3(host.Pos.X, y, host.Pos.Z) + normal * (host.Shape.Diameter / 2);
@@ -565,20 +565,20 @@ namespace LaunchPlanner
                     }
                 }
             }
-            Notes.Add(string.Format("{0} {1} par booster l'écartent de la fusée au largage.", b.SeparatorsEach, b.Separator.Title));
+            Notes.Add(string.Format("{0} {1} per booster push it away from the rocket on separation.", b.SeparatorsEach, b.Separator.Title));
             return all;
         }
 
         /// <summary>
-        /// Orientation d'une fusée de séparation : posée à plat contre le booster comme dans l'éditeur, retournée (tuyère
-        /// vers le haut) puis inclinée de 25° pour que ses gaz partent vers le haut et vers le corps central. La poussée
-        /// freine le booster largué et l'écarte de la fusée.
+        /// Orientation of a separation motor: laid flat against the booster as in the editor, flipped (nozzle
+        /// upward) then tilted by 25° so its exhaust goes upward and toward the core. The thrust
+        /// brakes the dropped booster and pushes it away from the rocket.
         /// </summary>
         static Quat SeparatorRotation(CraftPart sep, Vec3 normal, Vec3 toCore)
         {
             Quat upright = Quat.FromYaw(sep.Yaw);
             Vec3 exhaust = upright.Rotate(sep.Shape.ExhaustDir);
-            // Tuyère vers le bas en pose normale : on la retourne en tournant autour de la normale (la face d'attache reste contre le booster).
+            // Nozzle points down in the normal pose: flip it by rotating around the normal (the attach face stays against the booster).
             Quat flip = exhaust.Y < 0 ? Axis(normal, 180) : new Quat(0, 0, 0, 1);
             Vec3 tangent = Vec3.Cross(new Vec3(0, 1, 0), normal).Unit;
             Quat best = flip * upright;
@@ -601,8 +601,8 @@ namespace LaunchPlanner
         }
 
         /// <summary>
-        /// Asperges : chaque booster d'une paire alimente son voisin de la paire suivante, la dernière paire alimente le corps central.
-        /// Les conduites partent du réservoir du haut de chaque booster, à mi-hauteur.
+        /// Asparagus: each booster of a pair feeds its neighbor in the next pair, the last pair feeds the core.
+        /// The lines start from the top tank of each booster, at mid-height.
         /// </summary>
         void AddFuelLines(List<List<CraftPart>> perBooster, BoosterPlan b, int groups, CraftPart core)
         {
@@ -629,7 +629,7 @@ namespace LaunchPlanner
                 }
                 SetSymmetry(lines);
             }
-            Notes.Add("Asperges : des conduites de carburant relient chaque paire de boosters à la suivante, puis au corps central.");
+            Notes.Add("Asparagus: fuel lines connect each booster pair to the next, then to the core.");
         }
 
         static void SetSymmetry(List<CraftPart> group)
@@ -640,7 +640,7 @@ namespace LaunchPlanner
                     if (p != q) p.Symmetry.Add(q);
         }
 
-        /// <summary>Chaque pièce est larguée par le premier découpleur rencontré en remontant vers la racine.</summary>
+        /// <summary>Each part is dropped by the first decoupler met when walking up toward the root.</summary>
         void AssignSeparation()
         {
             foreach (CraftPart p in parts)
@@ -651,7 +651,7 @@ namespace LaunchPlanner
             }
         }
 
-        /// <summary>Étage inverse au sens de KSP : le premier étage activé porte le plus grand numéro.</summary>
+        /// <summary>Inverse stage in KSP's sense: the first activated stage carries the largest number.</summary>
         public int InverseStage(int activation)
         {
             return activation < 0 ? -1 : actions - 1 - activation;

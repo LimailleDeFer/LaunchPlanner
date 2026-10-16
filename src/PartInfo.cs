@@ -11,26 +11,26 @@ namespace LaunchPlanner
         public double MassT;
     }
 
-    /// <summary>Ce que le planificateur sait d'une pièce : tout ce qui sert au calcul du Δv.</summary>
+    /// <summary>What the planner knows about a part: everything used for the delta-v calculation.</summary>
     public class PartInfo
     {
         public string Name;
-        public string Variant = "";  // contenu choisi pour un réservoir commutable (B9PartSwitch)
-        public string VariantModule = "";  // moduleID du ModuleB9PartSwitch qui porte ce contenu
+        public string Variant = "";  // contents chosen for a switchable tank (B9PartSwitch)
+        public string VariantModule = "";  // moduleID of the ModuleB9PartSwitch that carries these contents
         public string Title;
-        public string Source;      // dossier de GameData d'où vient la pièce (Squad, SquadExpansion, nom du mod…)
-        public string Sizes;       // profils de fixation, ex. "size1, srf"
+        public string Source;      // GameData folder the part comes from (Squad, SquadExpansion, mod name...)
+        public string Sizes;       // attach profiles, e.g. "size1, srf"
         public string Tech;
-        public string Category = "";  // catégorie de l'éditeur (Coupling pour les découpleurs)
-        public double HeightM;        // distance entre les nœuds d'empilement du haut et du bas (0 si inconnue)
-        public double DiameterM;      // largeur réelle du modèle 3D (0 si inconnue)
-        public bool NoseTop;          // le haut du modèle se termine en pointe (réservoir à nez, propulseur à coiffe) : rien ne s'empile dessus
+        public string Category = "";  // editor category (Coupling for decouplers)
+        public double HeightM;        // distance between the top and bottom stack nodes (0 if unknown)
+        public double DiameterM;      // actual width of the 3D model (0 if unknown)
+        public bool NoseTop;          // the top of the model ends in a point (nose tank, booster with a cap): nothing stacks on top
 
-        // Coupleurs multiples (bi, tri, quadri) : un nœud en haut, plusieurs en bas
+        // Multi-couplers (bi, tri, quad): one node on top, several on the bottom
         public int StackOutputs;
         public double TopDiameterM;
         public double OutputDiameterM;
-        public double OutputSpacingM;  // plus petite distance entre deux nœuds du bas
+        public double OutputSpacingM;  // smallest distance between two bottom nodes
         public bool Unlocked;
         public PartKind Kind;
         public double Cost;
@@ -38,7 +38,7 @@ namespace LaunchPlanner
         public double WetMassT;
         public List<ResourceAmount> Resources = new List<ResourceAmount>();
 
-        // Moteurs et boosters
+        // Engines and boosters
         public double ThrustVacKN;
         public double ThrustAslKN;
         public double IspVac;
@@ -48,7 +48,7 @@ namespace LaunchPlanner
 
         public const double G0 = 9.80665;
 
-        /// <summary>Durée de combustion à pleine poussée avec le carburant embarqué (boosters).</summary>
+        /// <summary>Burn time at full thrust with the onboard fuel (boosters).</summary>
         public double BurnTimeS
         {
             get

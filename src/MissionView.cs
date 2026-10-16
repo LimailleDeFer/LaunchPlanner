@@ -4,10 +4,10 @@ using UnityEngine;
 
 namespace LaunchPlanner
 {
-    /// <summary>Onglet « Mission » : destination, type de mission, charge utile et budget Δv.</summary>
+    /// <summary>"Mission" tab: destination, mission type, payload and delta-v budget.</summary>
     public class MissionView
     {
-        static readonly string[] MissionTypes = { "Orbite", "Atterrissage", "Atterrissage + retour", "Orbite + retour" };
+        static readonly string[] MissionTypes = { "Orbit", "Landing", "Landing + return", "Orbit + return" };
 
         BodyInfo destination;
         int missionType = 1;
@@ -18,12 +18,12 @@ namespace LaunchPlanner
         bool manualDeltaV;
         string manualDeltaVText = "0";
         float nextPayloadRead;
-        bool[] payloadPhases;         // étapes confiées à la charge utile ; null : répartition automatique
+        bool[] payloadPhases;         // phases assigned to the payload; null: automatic split
         string phasesKey = "";
 
         GUIStyle rich;
 
-        /// <summary>Dernier budget calculé, lu par l'onglet « Lanceurs ».</summary>
+        /// <summary>Last computed budget, read by the "Launchers" tab.</summary>
         public Budget Current { get; private set; }
         public BodyInfo Destination { get { return destination; } }
         public string MissionName { get { return MissionTypes[missionType]; } }
@@ -34,7 +34,7 @@ namespace LaunchPlanner
             KspBodies.Refresh();
             if (destination == null || !KspBodies.All.Contains(destination))
             {
-                // Par défaut : la première lune du corps de départ.
+                // By default: the first moon of the home body.
                 destination = KspBodies.Home;
                 foreach (BodyInfo b in KspBodies.All)
                     if (b.Parent == KspBodies.Home) { destination = b; break; }
@@ -54,7 +54,7 @@ namespace LaunchPlanner
             if (destination == null || KspBodies.Home == null) return Current = null;
             Budget b = MissionBudget.Compute(KspBodies.Home, destination, (MissionType)missionType, marginPercent / 100.0, PayloadDeltaV(),
                 payloadPhases);
-            // Une autre destination ou un autre type de mission change les étapes : on revient à la répartition automatique.
+            // Another destination or mission type changes the phases: back to the automatic split.
             string key = string.Join("|", b.Phases.ConvertAll(p => p.Name).ToArray());
             if (key != phasesKey)
             {
@@ -76,7 +76,7 @@ namespace LaunchPlanner
         void InitStyles()
         {
             if (rich != null) return;
-            // Texte enrichi plutôt que FontStyle, qui obligerait à référencer un module Unity de plus.
+            // Rich text rather than FontStyle, which would require referencing one more Unity module.
             rich = new GUIStyle(GUI.skin.label) { richText = true };
         }
 
@@ -85,7 +85,7 @@ namespace LaunchPlanner
             InitStyles();
             if (KspBodies.Home == null)
             {
-                GUILayout.Label("Corps célestes non disponibles.");
+                GUILayout.Label("Celestial bodies not available.");
                 return;
             }
 
@@ -110,7 +110,7 @@ namespace LaunchPlanner
             foreach (BodyInfo b in KspBodies.All)
             {
                 if (b.IsStar) continue;
-                string label = new string(' ', Math.Max(0, b.Depth - 1) * 4) + b.Name + (b == KspBodies.Home ? " (départ)" : "");
+                string label = new string(' ', Math.Max(0, b.Depth - 1) * 4) + b.Name + (b == KspBodies.Home ? " (home)" : "");
                 bool selected = b == destination;
                 if (GUILayout.Toggle(selected, label) && !selected) destination = b;
             }
@@ -123,7 +123,7 @@ namespace LaunchPlanner
             Bold("Mission");
             missionType = GUILayout.Toolbar(missionType, MissionTypes);
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Marge de sécurité : " + marginPercent + " %", GUILayout.Width(200));
+            GUILayout.Label("Safety margin: " + marginPercent + " %", GUILayout.Width(200));
             if (GUILayout.Button("−", GUILayout.Width(30))) marginPercent = Math.Max(0, marginPercent - 5);
             if (GUILayout.Button("+", GUILayout.Width(30))) marginPercent = Math.Min(100, marginPercent + 5);
             GUILayout.FlexibleSpace();
@@ -132,24 +132,24 @@ namespace LaunchPlanner
 
         void DrawPayload()
         {
-            Bold("Charge utile : le vaisseau ouvert dans l'éditeur");
+            Bold("Payload: the vessel open in the editor");
             if (!payload.Present)
             {
-                GUILayout.Label("Aucun vaisseau dans l'éditeur. Charge ton atterrisseur ou ton module (bouton Charger, ou en sous-assemblage).");
+                GUILayout.Label("No vessel in the editor. Load your lander or module (Load button, or as a subassembly).");
                 return;
             }
-            GUILayout.Label(string.Format("{0} : {1} pièces, {2:0.00} t au total dont {3:0.00} t à vide",
-                payload.Name.Length > 0 ? payload.Name : "Sans nom", payload.PartCount, payload.MassT, payload.DryMassT));
+            GUILayout.Label(string.Format("{0}: {1} parts, {2:0.00} t total of which {3:0.00} t dry",
+                payload.Name.Length > 0 ? payload.Name : "Unnamed", payload.PartCount, payload.MassT, payload.DryMassT));
 
             GUILayout.BeginHorizontal();
-            string auto = payload.DeltaVKnown ? payload.DeltaVVac.ToString("0") + " m/s (calcul du jeu, dans le vide)" : "non disponible";
-            manualDeltaV = GUILayout.Toggle(manualDeltaV, "Saisir le Δv de la charge utile", GUILayout.Width(230));
+            string auto = payload.DeltaVKnown ? payload.DeltaVVac.ToString("0") + " m/s (game calculation, in vacuum)" : "not available";
+            manualDeltaV = GUILayout.Toggle(manualDeltaV, "Enter the payload delta-v", GUILayout.Width(230));
             if (manualDeltaV)
             {
                 manualDeltaVText = GUILayout.TextField(manualDeltaVText, GUILayout.Width(70));
                 GUILayout.Label("m/s");
             }
-            else GUILayout.Label("Δv propre : " + auto);
+            else GUILayout.Label("Own delta-v: " + auto);
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
         }
@@ -167,12 +167,12 @@ namespace LaunchPlanner
             if (destination == null) return;
             Budget budget = ComputeBudget();
 
-            Bold("Budget Δv : " + KspBodies.Home.Name + " → " + destination.Name);
+            Bold("Delta-v budget: " + KspBodies.Home.Name + " → " + destination.Name);
             GUILayout.BeginHorizontal();
-            Bold("Étape", GUILayout.Width(280));
+            Bold("Phase", GUILayout.Width(280));
             Bold("Δv", GUILayout.Width(80));
-            Bold("Charge utile ?", GUILayout.Width(110));
-            Bold("Assuré par", GUILayout.Width(200));
+            Bold("Payload?", GUILayout.Width(110));
+            Bold("Handled by", GUILayout.Width(200));
             GUILayout.EndHorizontal();
 
             bool[] toggled = null;
@@ -183,7 +183,7 @@ namespace LaunchPlanner
                 GUILayout.BeginHorizontal();
                 GUILayout.Label(p.Name + (p.Note.Length > 0 ? " (" + p.Note + ")" : ""), GUILayout.Width(280));
                 GUILayout.Label(p.DeltaV.ToString("0") + " m/s", GUILayout.Width(80));
-                // Case : cette étape est faite par la charge utile (le décollage reste toujours au lanceur).
+                // Checkbox: this phase is done by the payload (liftoff always stays with the launcher).
                 if (i == 0) GUILayout.Label("", GUILayout.Width(110));
                 else if (GUILayout.Toggle(p.CoveredByPayload, "", GUILayout.Width(110)) != p.CoveredByPayload)
                 {
@@ -191,9 +191,9 @@ namespace LaunchPlanner
                     for (int j = 0; j < toggled.Length; j++) toggled[j] = budget.Phases[j].CoveredByPayload;
                     toggled[i] = !p.CoveredByPayload;
                 }
-                string rest = p.LanderDeltaV > 0 ? "atterrisseur" : "lanceur";
-                string who = p.CoveredByPayload ? "charge utile"
-                    : p.CoveredDeltaV > 0 ? string.Format("charge utile ({0:0} m/s) + {1}", p.CoveredDeltaV, rest)
+                string rest = p.LanderDeltaV > 0 ? "lander" : "launcher";
+                string who = p.CoveredByPayload ? "payload"
+                    : p.CoveredDeltaV > 0 ? string.Format("payload ({0:0} m/s) + {1}", p.CoveredDeltaV, rest)
                     : rest;
                 GUILayout.Label(who, GUILayout.Width(200));
                 GUILayout.EndHorizontal();
@@ -202,9 +202,9 @@ namespace LaunchPlanner
 
             GUILayout.BeginHorizontal();
             GUILayout.Label(payloadPhases == null
-                ? "Répartition automatique : ta charge utile fait ce qui se passe sur place, selon son Δv. Coche ou décoche une étape pour choisir toi-même."
-                : "Répartition choisie à la main.", GUILayout.Width(560));
-            if (payloadPhases != null && GUILayout.Button("Automatique", GUILayout.Width(100))) { payloadPhases = null; budget = ComputeBudget(); }
+                ? "Automatic split: your payload does what happens on site, according to its delta-v. Check or uncheck a phase to choose yourself."
+                : "Split chosen manually.", GUILayout.Width(560));
+            if (payloadPhases != null && GUILayout.Button("Automatic", GUILayout.Width(100))) { payloadPhases = null; budget = ComputeBudget(); }
             GUILayout.EndHorizontal();
             if (toggled != null)
             {
@@ -212,21 +212,21 @@ namespace LaunchPlanner
                 budget = ComputeBudget();
             }
 
-            GUILayout.Label(string.Format("Total : {0:0} m/s, soit {1:0} m/s avec la marge de {2} %.",
+            GUILayout.Label(string.Format("Total: {0:0} m/s, or {1:0} m/s with the {2} % margin.",
                 budget.Total, budget.TotalWithMargin, marginPercent));
             if (budget.PayloadDeltaV > 0)
                 GUILayout.Label(budget.PayloadUsedDeltaV > 0.5 || payloadPhases != null
-                    ? string.Format("La charge utile assure {0:0} m/s des étapes, sur les {1:0} m/s qu'elle a.", budget.PayloadUsedDeltaV, budget.PayloadDeltaV)
-                    : string.Format("Les {0:0} m/s de la charge utile ne sont pas comptés : le lanceur l'amène jusqu'en orbite, elle les garde pour la suite.",
+                    ? string.Format("The payload handles {0:0} m/s of the phases, out of the {1:0} m/s it has.", budget.PayloadUsedDeltaV, budget.PayloadDeltaV)
+                    : string.Format("The payload's {0:0} m/s are not counted: the launcher takes it to orbit, and it keeps them for later.",
                         budget.PayloadDeltaV));
             if (budget.LanderDeltaV > 0)
-                GUILayout.Label(string.Format("Ta charge utile ne peut pas se poser seule : un étage atterrisseur fournira {0:0} m/s sur {1}, " +
-                    "avec des jambes et une poussée suffisante pour sa gravité.", budget.LanderDeltaV, budget.LanderBody));
-            GUILayout.Label(string.Format("<size=16><b>Le lanceur doit fournir {0:0} m/s en emportant {1:0.00} t{2}.</b></size>",
-                budget.LauncherDeltaV, payload.MassT, budget.LanderDeltaV > 0 ? " et l'atterrisseur" : ""), rich);
+                GUILayout.Label(string.Format("Your payload cannot land by itself: a lander stage will provide {0:0} m/s at {1}, " +
+                    "with legs and enough thrust for its gravity.", budget.LanderDeltaV, budget.LanderBody));
+            GUILayout.Label(string.Format("<size=16><b>The launcher must provide {0:0} m/s while carrying {1:0.00} t{2}.</b></size>",
+                budget.LauncherDeltaV, payload.MassT, budget.LanderDeltaV > 0 ? " and the lander" : ""), rich);
 
             foreach (string w in budget.Warnings) GUILayout.Label("<color=#ffbf33>" + w + "</color>", rich);
-            GUILayout.Label("Estimation par transferts de Hohmann ; la marge couvre les changements de plan et les corrections.");
+            GUILayout.Label("Estimate using Hohmann transfers; the margin covers plane changes and corrections.");
         }
     }
 }

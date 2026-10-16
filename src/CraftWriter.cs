@@ -5,7 +5,7 @@ using System.Text;
 
 namespace LaunchPlanner
 {
-    /// <summary>Nœud de configuration indépendant du jeu (même structure que ConfigNode), pour écrire un vaisseau.</summary>
+    /// <summary>Game-independent configuration node (same structure as ConfigNode), used to write a vessel.</summary>
     public class CraftNode
     {
         public string Name;
@@ -27,7 +27,7 @@ namespace LaunchPlanner
             return n;
         }
 
-        /// <summary>Texte au format des fichiers .craft (le nœud racine n'est pas entouré d'accolades).</summary>
+        /// <summary>Text in the .craft file format (the root node is not wrapped in braces).</summary>
         public string ToText()
         {
             StringBuilder sb = new StringBuilder();
@@ -46,7 +46,7 @@ namespace LaunchPlanner
         }
     }
 
-    /// <summary>Écrit les pièces placées par CraftBuilder au format d'un vaisseau KSP.</summary>
+    /// <summary>Writes the parts placed by CraftBuilder in the KSP vessel format.</summary>
     public static class CraftWriter
     {
         static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
@@ -65,8 +65,8 @@ namespace LaunchPlanner
         }
 
         /// <summary>
-        /// `offset` déplace tout le lanceur (pour le placer sous une charge utile) et `stageOffset` décale ses étages
-        /// au-dessus de ceux de la charge utile.
+        /// `offset` moves the whole launcher (to place it under a payload) and `stageOffset` shifts its stages
+        /// above those of the payload.
         /// </summary>
         public static CraftNode Write(CraftBuilder builder, List<CraftPart> parts, string shipName, string version,
             Vec3 offset = default(Vec3), int stageOffset = 0)
@@ -75,7 +75,7 @@ namespace LaunchPlanner
             CraftNode ship = new CraftNode("ship");
             ship.Add("ship", shipName)
                 .Add("version", version)
-                .Add("description", "Lanceur proposé par LaunchPlanner")
+                .Add("description", "Launcher proposed by LaunchPlanner")
                 .Add("type", "VAB")
                 .Add("size", "1,1,1")
                 .Add("persistentId", ((uint)random.Next(1, int.MaxValue)).ToString(Inv))
@@ -125,7 +125,7 @@ namespace LaunchPlanner
                 if (p.Attach == AttachKind.Surface) n.Add("srfN", "srfAttach," + p.Parent.Key);
                 if (p.FuelTarget != null)
                 {
-                    // Conduite de carburant : pièce composée, l'extrémité est donnée dans le repère de la conduite.
+                    // Fuel line: compound part, the end point is given in the line's frame.
                     Vec3 end = (p.TargetPoint - p.Pos).Yaw(-p.Yaw);
                     double len = Math.Sqrt(end.X * end.X + end.Y * end.Y + end.Z * end.Z);
                     Vec3 dir = len > 0 ? end * (1 / len) : new Vec3(0, 0, 1);
@@ -148,7 +148,7 @@ namespace LaunchPlanner
                     }
                     if (module == "ModuleToggleCrossfeed" && p.Crossfeed) m.Add("crossfeedStatus", "True");
                 }
-                // Réservoirs commutables : on écrit le contenu choisi.
+                // Switchable tanks: the chosen contents are written.
                 if (p.Info.Variant.Length > 0)
                     foreach (ResourceAmount r in p.Info.Resources)
                         n.AddNode("RESOURCE")
