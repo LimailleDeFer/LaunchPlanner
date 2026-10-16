@@ -28,6 +28,7 @@ namespace LaunchPlanner
         public PartInfo Separator;      // separation motor (Sepratron) that pushes the dropped booster away
         public int SeparatorsEach;      // count per booster, based on its dry mass
         public PartInfo NoseCone;       // nose cone on top of the booster
+        public List<PartInfo> NoseAdapters = new List<PartInfo>();   // adapters under the cone, bottom to top (no cone at the booster's size)
         public double NoseMass;
 
         public double DryEach
@@ -143,6 +144,7 @@ namespace LaunchPlanner
         public List<PartInfo> Legs = new List<PartInfo>();   // unlocked landing legs
 
         public List<PartInfo> NoseCones = new List<PartInfo>();   // unlocked nose cones (top of boosters)
+        public List<PartInfo> Adapters = new List<PartInfo>();    // unlocked structural adapters (narrow top), to reach a cone's size
         public List<PartInfo> Couplers = new List<PartInfo>();    // unlocked multi-couplers (engine clusters)
         public string PayloadBottomSize = "";                     // profile of the payload's bottom node ("" = unknown)
     }
@@ -240,8 +242,77 @@ namespace LaunchPlanner
             b.Separator = separator;
             b.SeparatorsEach = SeparatorCount(separator, b.Part.DryMassT * (b.Solid ? 1 : b.EnginesEach) + (b.Solid ? 0 : b.TankDry));
             PartInfo top = b.Solid ? b.Part : b.Tanks.Count > 0 ? b.Tanks[0].Tank : null;
-            b.NoseCone = top != null && !top.NoseTop && (!heightsKnown || top.HeightM > 0) ? NoseCone(SizeOf(top)) : null;
-            b.NoseMass = b.NoseCone != null ? b.NoseCone.DryMassT : 0;
+            b.NoseCone = null;
+            b.NoseAdapters = new List<PartInfo>();
+            if (top != null && !top.NoseTop && (!heightsKnown || top.HeightM > 0))
+            {
+                List<PartInfo> chain = NoseChain(TopSize(top));
+                if (chain != null)
+                {
+                    b.NoseCone = chain[chain.Count - 1];
+                    b.NoseAdapters = chain.GetRange(0, chain.Count - 1);
+                }
+            }
+            b.NoseMass = 0;
+            if (b.NoseCone != null) b.NoseMass += b.NoseCone.DryMassT;
+            foreach (PartInfo a in b.NoseAdapters) b.NoseMass += a.DryMassT;
+        }
+
+        /// <summary>Profile of a part's top: the narrower one for an adapter tank.</summary>
+        static string TopSize(PartInfo p)
+        {
+            string best = SizeOf(p);
+            foreach (string raw in (p.Sizes ?? "").Split(new[] { ',' }))
+            {
+                string s = raw.Trim();
+                if (s.StartsWith("size") && CraftBuilder.DiameterOf(s) < CraftBuilder.DiameterOf(best)) best = s;
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// Lightest way to cap a top of this size: a cone of that size, or up to two structural adapters
+        /// toward a narrower size that has one (e.g. 3.75 → 2.5 → 1.25 m), then that cone. Null if none.
+        /// The adapters come first, bottom to top, and the cone last.
+        /// </summary>
+        List<PartInfo> NoseChain(string size)
+        {
+            List<PartInfo> best = null;
+            double bestMass = double.MaxValue;
+            PartInfo cone = NoseCone(size);
+            if (cone != null) return new List<PartInfo> { cone };
+            foreach (PartInfo a in req.Adapters)
+            {
+                if (a.AdapterBottom != size) continue;
+                PartInfo c = NoseCone(a.AdapterTop);
+                if (c != null && a.DryMassT + c.DryMassT < bestMass) { bestMass = a.DryMassT + c.DryMassT; best = new List<PartInfo> { a, c }; }
+                foreach (PartInfo a2 in req.Adapters)
+                {
+                    if (a2.AdapterBottom != a.AdapterTop) continue;
+                    PartInfo c2 = NoseCone(a2.AdapterTop);
+                    double m = a.DryMassT + a2.DryMassT + (c2 != null ? c2.DryMassT : 0);
+                    if (c2 != null && m < bestMass - 0.05) { bestMass = m; best = new List<PartInfo> { a, a2, c2 }; }
+                }
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// Adapter tank (propellant of the booster) to put on top of a booster of this size, when no cone fits
+        /// that size directly: its narrow top takes a cone, and its propellant counts. The fullest, or null.
+        /// </summary>
+        PartInfo FuelNoseAdapter(string mixture, string size, double fuel)
+        {
+            Mixture mix;
+            if (NoseCone(size) != null || !mixtures.TryGetValue(mixture, out mix)) return null;
+            PartInfo best = null;
+            foreach (PartInfo a in mix.Adapters)
+            {
+                if (!HasSize(a, size) || TopSize(a) == size || Propellant(a) >= fuel) continue;
+                if (NoseChain(TopSize(a)) == null) continue;
+                if (best == null || Propellant(a) > Propellant(best)) best = a;
+            }
+            return best;
         }
 
         /// <summary>Nose cone sized for the top of the booster: the lightest, like those of real boosters.</summary>
@@ -937,6 +1008,7 @@ namespace LaunchPlanner
                         Tanks = new List<TankUse>(b.Tanks), Fuel = b.Fuel, TankDry = b.TankDry,
                         Decoupler = b.Decoupler, DecouplerMass = b.DecouplerMass,
                         Separator = b.Separator, SeparatorsEach = b.SeparatorsEach, NoseCone = b.NoseCone, NoseMass = b.NoseMass,
+                        NoseAdapters = new List<PartInfo>(b.NoseAdapters),
                     };
                 }
                 c.Stages.Add(n);
@@ -1388,7 +1460,7 @@ namespace LaunchPlanner
                 {
                     PartInfo top = b.Solid ? b.Part : b.Tanks.Count > 0 ? b.Tanks[0].Tank : null;
                     if (top != null && !top.NoseTop)
-                        d.Notes.Add(string.Format("No nose cone unlocked at Ø {0} for the boosters: their top stays flat.", Diameter(SizeOf(top))));
+                        d.Notes.Add(string.Format("No nose cone unlocked at Ø {0} for the boosters, nor an adapter toward a cone: their top stays flat.", Diameter(TopSize(top))));
                 }
             }
             return d;
@@ -1505,14 +1577,14 @@ namespace LaunchPlanner
                     }
                 // A booster gets a nose cone: if none is unlocked at its diameter, the nearest diameter
                 // that has one and keeps the booster no taller than the core.
-                if (req.NoseCones.Count > 0 && NoseCone(bs) == null && mixtures.TryGetValue(b.Mixture, out bm))
+                if (req.NoseCones.Count > 0 && NoseChain(bs) == null && FuelNoseAdapter(b.Mixture, bs, b.Fuel) == null && mixtures.TryGetValue(b.Mixture, out bm))
                 {
                     string coned = null;
                     double gap = double.MaxValue;
                     foreach (string size in bm.Sizes)
                     {
                         double bd = CraftBuilder.DiameterOf(size);
-                        if (bd > CraftBuilder.DiameterOf(s.Size) + 0.01 || NoseCone(size) == null) continue;
+                        if (bd > CraftBuilder.DiameterOf(s.Size) + 0.01 || (NoseChain(size) == null && FuelNoseAdapter(b.Mixture, size, b.Fuel) == null)) continue;
                         if (ClusterCapacity(bd, engD) < k) continue;
                         double bf, btd;
                         List<TankUse> bt = Fill(b.Fuel, b.Mixture, size, out bf, out btd, true);
@@ -1523,7 +1595,18 @@ namespace LaunchPlanner
                     }
                     if (coned != null) bs = coned;
                 }
-                b.Tanks = Fill(b.Fuel, b.Mixture, bs, out b.Fuel, out b.TankDry, true);
+                // No cone at this size: an adapter tank on top narrows the booster and carries propellant.
+                PartInfo noseTank = FuelNoseAdapter(b.Mixture, bs, b.Fuel);
+                if (noseTank != null)
+                {
+                    double nf, ntd;
+                    List<TankUse> rest = Fill(b.Fuel - Propellant(noseTank), b.Mixture, bs, out nf, out ntd, true);
+                    b.Tanks = new List<TankUse> { new TankUse { Tank = noseTank, Count = 1 } };
+                    b.Tanks.AddRange(rest);
+                    b.Fuel = nf + Propellant(noseTank);
+                    b.TankDry = ntd + noseTank.DryMassT;
+                }
+                else b.Tanks = Fill(b.Fuel, b.Mixture, bs, out b.Fuel, out b.TankDry, true);
                 b.Coupler = Coupler(bs, b.Part, k);
                 b.CouplerMass = b.Coupler != null ? b.Coupler.DryMassT : 0;
             }
@@ -1618,10 +1701,11 @@ namespace LaunchPlanner
                 if (b != null && b.Count > 0)
                 {
                     double bh = (b.Solid ? HeightOf(b.Part) : TanksHeight(b.Tanks) + HeightOf(b.Part) + HeightOf(b.Coupler)) + HeightOf(b.NoseCone);
+                    foreach (PartInfo a in b.NoseAdapters) bh += HeightOf(a);
                     string bs = b.Solid || b.Tanks.Count == 0 ? SizeOf(b.Part) : SizeOf(b.Tanks[0].Tank);
                     boosterTop = Math.Max(boosterTop, bh);   // the boosters are aligned with the bottom of the first stage
                     width = Math.Max(width, dia + 2 * CraftBuilder.DiameterOf(bs) + 0.2);
-                    parts += b.Count * ((b.Solid ? 0 : TankParts(b.Tanks) + b.EnginesEach - 1 + (b.Coupler != null ? 1 : 0)) + 1 + (b.Decoupler != null ? 1 : 0) + b.SeparatorsEach + (b.Crossfeed ? 1 : 0) + (b.NoseCone != null ? 1 : 0));
+                    parts += b.Count * ((b.Solid ? 0 : TankParts(b.Tanks) + b.EnginesEach - 1 + (b.Coupler != null ? 1 : 0)) + 1 + (b.Decoupler != null ? 1 : 0) + b.SeparatorsEach + (b.Crossfeed ? 1 : 0) + (b.NoseCone != null ? 1 : 0) + b.NoseAdapters.Count);
                 }
             }
             d.HeightM = Math.Max(height, boosterTop);

@@ -504,7 +504,13 @@ namespace LaunchPlanner
                 else cur.Activation = 0;
                 perBooster.Add(mine);
                 CraftPart top = mine[b.Decoupler != null ? 1 : 0];
-                if (b.NoseCone != null && top.Shape.TopNode != null && top.Shape.BottomNode != null) cones.Add(StackAbove(top, b.NoseCone));
+                if (b.NoseCone != null && top.Shape.TopNode != null && top.Shape.BottomNode != null)
+                {
+                    // Adapters first when no cone fits the booster's size, each part in symmetry with its counterparts.
+                    CraftPart cap = top;
+                    foreach (PartInfo a in b.NoseAdapters) { cap = StackAbove(cap, a); mine.Add(cap); }
+                    cones.Add(StackAbove(cap, b.NoseCone));
+                }
             }
             if (cones.Count > 0)
             {

@@ -31,6 +31,9 @@ namespace LaunchPlanner
         public double TopDiameterM;
         public double OutputDiameterM;
         public double OutputSpacingM;  // smallest distance between two bottom nodes
+        // Structural adapters (no propellant): profile of the top and bottom nodes
+        public string AdapterTop = "";
+        public string AdapterBottom = "";
         public bool Unlocked;
         public PartKind Kind;
         public double Cost;

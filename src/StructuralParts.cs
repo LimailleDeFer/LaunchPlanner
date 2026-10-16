@@ -76,6 +76,42 @@ namespace LaunchPlanner
             return cones;
         }
 
+        /// <summary>Adapters: two stack nodes, the narrow one on top, two profiles (e.g. Rockomax adapter 2.5 m → 1.25 m).</summary>
+        public static List<PartInfo> Adapters()
+        {
+            List<PartInfo> adapters = new List<PartInfo>();
+            if (PartLoader.LoadedPartsList == null) return adapters;
+            foreach (AvailablePart ap in PartLoader.LoadedPartsList)
+            {
+                try
+                {
+                    Part prefab;
+                    if (!Usable(ap, out prefab)) continue;
+                    List<AttachNode> nodes = StackNodes(prefab);
+                    if (nodes.Count != 2) continue;
+                    AttachNode top = nodes[0].position.y > nodes[1].position.y ? nodes[0] : nodes[1];
+                    AttachNode bottom = top == nodes[0] ? nodes[1] : nodes[0];
+                    if (top.orientation.y < 0.5f || bottom.orientation.y > -0.5f || top.size >= bottom.size) continue;
+                    PartInfo info = Info(ap, prefab);
+                    List<string> profiles = new List<string>();
+                    foreach (string raw in (info.Sizes ?? "").Split(new[] { ',' }))
+                    {
+                        string s = raw.Trim();
+                        if (s.StartsWith("size") && !profiles.Contains(s)) profiles.Add(s);
+                    }
+                    if (profiles.Count != 2) continue;
+                    profiles.Sort((a, b) => CraftBuilder.DiameterOf(a).CompareTo(CraftBuilder.DiameterOf(b)));
+                    if (CraftBuilder.DiameterOf(profiles[0]) >= CraftBuilder.DiameterOf(profiles[1])) continue;
+                    info.AdapterTop = profiles[0];
+                    info.AdapterBottom = profiles[1];
+                    info.HeightM = top.position.y - bottom.position.y;
+                    adapters.Add(info);
+                }
+                catch (Exception) { }
+            }
+            return adapters;
+        }
+
         /// <summary>Multi-couplers: one node on top, at least two nodes on the bottom, side by side.</summary>
         public static List<PartInfo> MultiCouplers()
         {

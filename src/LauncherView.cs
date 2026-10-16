@@ -138,6 +138,7 @@ namespace LaunchPlanner
             }
             SiteLimits.Apply(req);
             req.NoseCones = StructuralParts.NoseCones();
+            req.Adapters = StructuralParts.Adapters();
             req.Couplers = StructuralParts.MultiCouplers();
             if (!manualMass && mission.Payload.Present)
             {
@@ -336,6 +337,7 @@ namespace LaunchPlanner
                     if (!b.Solid) foreach (TankUse t in b.Tanks) Label("    " + t.Count + " × " + t.Tank.Title);
                     if (b.Decoupler != null) Label("    1 × " + b.Decoupler.Title);
                     if (b.Separator != null && b.SeparatorsEach > 0) Label("    " + b.SeparatorsEach + " × " + b.Separator.Title);
+                    foreach (PartInfo a in b.NoseAdapters) Label("    1 × " + a.Title);
                     if (b.NoseCone != null) Label("    1 × " + b.NoseCone.Title);
                 }
             }

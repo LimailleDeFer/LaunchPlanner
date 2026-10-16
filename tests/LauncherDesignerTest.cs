@@ -108,6 +108,11 @@ static class LauncherDesignerTest
         string cones = Environment.GetEnvironmentVariable("CONES");
         foreach (string size in string.IsNullOrEmpty(cones) ? new[] { "size0", "size1", "size1p5", "size2", "size3" } : cones.Split(','))
             req.NoseCones.Add(new PartInfo { Name = "fakeCone" + size, Title = "Cone " + size, Sizes = size, Kind = PartKind.Tank, Unlocked = true, DryMassT = 0.03 * CraftBuilder.DiameterOf(size), Cost = 300 });
+        // Fake structural adapters 3.75 → 2.5 and 2.5 → 1.25 m (NOADAPTERS=1 to go without)
+        if (Environment.GetEnvironmentVariable("NOADAPTERS") == null)
+            foreach (string[] a in new[] { new[] { "size3", "size2" }, new[] { "size2", "size1" } })
+                req.Adapters.Add(new PartInfo { Name = "fakeAdapter" + a[0] + a[1], Title = "Adapter " + a[0] + "→" + a[1], Sizes = a[1] + ", " + a[0],
+                    Kind = PartKind.Tank, Unlocked = true, DryMassT = 0.1 * CraftBuilder.DiameterOf(a[0]), Cost = 400, AdapterTop = a[1], AdapterBottom = a[0], HeightM = 1 });
         if (Environment.GetEnvironmentVariable("NOCOUPLERS") == null)
             foreach (string size in new[] { "size1", "size2", "size3" })
                 for (int n = 2; n <= 4; n++)
@@ -142,7 +147,7 @@ static class LauncherDesignerTest
                 if (s.Coupler != null) Console.WriteLine("      under a " + s.Coupler.Title);
                 if (s.Boosters != null)
                     Console.WriteLine("      + {0} × {4}{1}{2}{3}", s.Boosters.Count, s.Boosters.Part.Title, s.Boosters.Solid ? "" : " with " + Tanks(s.Boosters.Tanks),
-                        s.Boosters.NoseCone != null ? ", " + s.Boosters.NoseCone.Title : "",
+                        s.Boosters.NoseCone != null ? ", " + string.Join(" + ", s.Boosters.NoseAdapters.ConvertAll(x => x.Title).ToArray()) + (s.Boosters.NoseAdapters.Count > 0 ? " + " : "") + s.Boosters.NoseCone.Title : "",
                         s.Boosters.EnginesEach > 1 ? "(" + s.Boosters.EnginesEach + " engines" + (s.Boosters.Coupler != null ? " under " + s.Boosters.Coupler.Title : "") + ") " : "");
             }
             foreach (string n in d.Notes) Console.WriteLine("   note: " + n);
