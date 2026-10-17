@@ -89,6 +89,7 @@ static class LauncherDesignerTest
         };
         string twr = Environment.GetEnvironmentVariable("TWR");
         if (!string.IsNullOrEmpty(twr)) req.MinLiftoffTwr = D(twr);
+        if (Environment.GetEnvironmentVariable("POWER") == "1") { req.Powerful = true; req.MinUpperTwr = LauncherDesigner.PowerfulUpperTwr; }
         // LIMITS=height,width,parts,mass (0 = no limit), like the VAB and launch pad in career
         string limits = Environment.GetEnvironmentVariable("LIMITS");
         if (!string.IsNullOrEmpty(limits))

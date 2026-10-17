@@ -193,6 +193,7 @@ namespace LaunchPlanner
         public double MinUpperTwr = 0.5;
         public double AscentDeltaV = 3400; // delta-v of ascent to orbit from the ground: stages lit earlier need thrust
         public bool MinimizeCost;
+        public bool Powerful;           // fast launchers: every stage pushes hard, mass is minimized only after that
 
         // VAB and launch pad limits (0 = no limit, e.g. in sandbox mode)
         public double MaxHeight;        // m
@@ -838,6 +839,10 @@ namespace LaunchPlanner
 
         // The ascent budget assumes a brisk climb; below this TWR, a stage still climbing pays extra gravity losses.
         public const double BriskClimbTwr = 1.5;
+        public const double PowerfulClimbTwr = 2.2;     // "powerful" option: the climb the budget is measured against
+        const double PowerfulAscentTwr = 1.3;           // "powerful" option: least TWR of a stage lit mid-ascent
+        public const double PowerfulUpperTwr = 0.8;     // "powerful" option: least TWR of a stage lit in orbit
+        double BriskTwr { get { return req.Powerful ? PowerfulClimbTwr : BriskClimbTwr; } }
         // Off while sizing a bare core that boosters will help lift: its own sluggishness says nothing yet.
         bool chargeClimb = true;
 
@@ -852,7 +857,7 @@ namespace LaunchPlanner
             double ascent = req.AscentDeltaV;
             if (ascent <= 0 || startDeltaV >= ascent || segmentDv <= 0 || m1 <= 0 || m0 <= m1 || thrustKN <= 0) return 0;
             // The TWR only rises as propellant burns: brisk from the start, brisk throughout.
-            if (thrustKN / (m0 * req.HomeGravity) >= BriskClimbTwr) return 0;
+            if (thrustKN / (m0 * req.HomeGravity) >= BriskTwr) return 0;
             const int Steps = 16;
             double lnTotal = Math.Log(m0 / m1), step = (m0 - m1) / Steps, done = 0, loss = 0;
             for (int k = 0; k < Steps; k++)
@@ -863,7 +868,7 @@ namespace LaunchPlanner
                 done += piece;
                 if (x >= 1) break;
                 double twr = thrustKN / ((ma + mb) / 2 * req.HomeGravity);
-                loss += (1 - x) * Math.Max(0, 1 / twr - 1 / BriskClimbTwr) * piece;
+                loss += (1 - x) * Math.Max(0, 1 / twr - 1 / BriskTwr) * piece;
             }
             return loss;
         }
@@ -950,7 +955,7 @@ namespace LaunchPlanner
             double x = (startDeltaV / req.AscentDeltaV - 0.5) / 0.5;
             if (!req.HomeAtmosphere) x = startDeltaV / (req.AscentDeltaV * 0.5);
             x = Math.Max(0, Math.Min(1, x));
-            double high = Math.Max(0.9, req.MinUpperTwr);
+            double high = Math.Max(req.Powerful ? PowerfulAscentTwr : 0.9, req.MinUpperTwr);
             return high + (req.MinUpperTwr - high) * x;
         }
 

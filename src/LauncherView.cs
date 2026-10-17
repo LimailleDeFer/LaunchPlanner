@@ -18,7 +18,8 @@ namespace LaunchPlanner
         readonly MissionView mission;
 
         // Settings
-        bool minimizeCost;
+        int optimize;   // 0 mass, 1 cost, 2 power
+        bool minimizeCost { get { return optimize == 1; } }
         double minLiftoffTwr = 1.3;
         bool manualMass;
         string manualMassText = "5";
@@ -69,7 +70,7 @@ namespace LaunchPlanner
         {
             Budget b = mission.Current;
             return string.Format(CultureInfo.InvariantCulture, "{0:0}|{1:0.00}|{2}|{3:0.00}|{4}|{5:0.0}|{6}|{7:0}|{8:0.00}",
-                TargetDeltaV(), PayloadMass(), minimizeCost, minLiftoffTwr, PartInventory.Parts.Count,
+                TargetDeltaV(), PayloadMass(), optimize, minLiftoffTwr, PartInventory.Parts.Count,
                 mission.Payload.HeightM, mission.Payload.PartCount,
                 b != null ? b.LanderDeltaV : 0, b != null ? b.LanderGravity : 0);
         }
@@ -128,6 +129,8 @@ namespace LaunchPlanner
                 TargetDeltaV = TargetDeltaV(),
                 MinLiftoffTwr = minLiftoffTwr,
                 MinimizeCost = minimizeCost,
+                Powerful = optimize == 2,
+                MinUpperTwr = optimize == 2 ? LauncherDesigner.PowerfulUpperTwr : 0.5,
             };
             BodyInfo home = KspBodies.Home;
             if (home != null)
@@ -268,7 +271,7 @@ namespace LaunchPlanner
 
             GUILayout.BeginHorizontal();
             GUILayout.Label("Optimize:", GUILayout.Width(80));
-            minimizeCost = GUILayout.Toolbar(minimizeCost ? 1 : 0, new[] { "mass", "cost" }, GUILayout.Width(200)) == 1;
+            optimize = GUILayout.Toolbar(optimize, new[] { "mass", "cost", "power" }, GUILayout.Width(270));
             GUILayout.Space(20);
             GUILayout.Label(string.Format(CultureInfo.InvariantCulture, "Minimum liftoff TWR: {0:0.0}", minLiftoffTwr), GUILayout.Width(200));
             if (GUILayout.Button("−", GUILayout.Width(30))) minLiftoffTwr = Math.Max(1.1, Math.Round(minLiftoffTwr - 0.1, 1));
@@ -317,7 +320,8 @@ namespace LaunchPlanner
             string dvColor = d.DeltaV - d.ClimbLoss >= designsDeltaV - 1 ? "#66ff66" : "#ff6666";
             Label(string.Format("Δv <color={0}><b>{1:0} m/s</b></color> for {2:0} required", dvColor, d.DeltaV, designsDeltaV));
             if (d.ClimbLoss >= 1)
-                Label(string.Format("of which ≈ {0:0} m/s lost to a slow climb (TWR under {1:0.0} during the ascent)", d.ClimbLoss, LauncherDesigner.BriskClimbTwr));
+                Label(string.Format("of which ≈ {0:0} m/s lost to a slow climb (TWR under {1:0.0} during the ascent)", d.ClimbLoss,
+                    optimize == 2 ? LauncherDesigner.PowerfulClimbTwr : LauncherDesigner.BriskClimbTwr));
 
             if (d.Lander != null)
             {
