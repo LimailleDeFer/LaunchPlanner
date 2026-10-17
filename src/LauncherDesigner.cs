@@ -2110,10 +2110,9 @@ namespace LaunchPlanner
 
             // RCS: the gentlest thruster that still gives the acceleration with 4 nozzles pushing, or the strongest one.
             double needed = mass * RcsAccel / 4;   // kN per nozzle
-            // A payload whose own RCS already pushes the whole stack twice as hard (about a quarter of its nozzles push
-            // in any one direction) needs none on the stage.
-            bool payloadRcs = req.PayloadRcsKN / 4 >= 2 * mass * RcsAccel;
-            foreach (PartInfo r in payloadRcs ? new List<PartInfo>() : req.RcsThrusters)
+            // Always the stage's own RCS and monopropellant: a payload's RCS (often built into its pod, at one end of the
+            // stack, with little monopropellant) is kept for its own mission.
+            foreach (PartInfo r in req.RcsThrusters)
             {
                 if (r.RcsThrustKN <= 0) continue;
                 bool enough = r.RcsThrustKN >= needed, bestEnough = a.Rcs != null && a.Rcs.RcsThrustKN >= needed;
