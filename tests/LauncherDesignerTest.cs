@@ -194,6 +194,12 @@ static class LauncherDesignerTest
                     Console.WriteLine("      + {0} × {4}{1}{2}{3}", s.Boosters.Count, s.Boosters.Part.Title, s.Boosters.Solid ? "" : " with " + Tanks(s.Boosters.Tanks),
                         s.Boosters.NoseCone != null ? ", " + string.Join(" + ", s.Boosters.NoseAdapters.ConvertAll(x => x.Title).ToArray()) + (s.Boosters.NoseAdapters.Count > 0 ? " + " : "") + s.Boosters.NoseCone.Title : "",
                         s.Boosters.EnginesEach > 1 ? "(" + s.Boosters.EnginesEach + " engines" + (s.Boosters.Coupler != null ? " under " + s.Boosters.Coupler.Title : "") + ") " : "");
+                if (s.Boosters != null && !s.Boosters.Solid && !s.Boosters.Crossfeed)
+                {
+                    double tc = (s.Fuel + s.EngineFuel) / (s.EngineCount * s.Engine.ThrustVacKN / (s.Engine.IspVac * 9.80665));
+                    double tb = s.Boosters.Fuel / (s.Boosters.EnginesEach * s.Boosters.Part.ThrustVacKN / (s.Boosters.Part.IspVac * 9.80665));
+                    Console.WriteLine("      burn: core {0:0} s, boosters {1:0} s{2}", tc, tb, tb > tc ? "  ERROR: the core flames out first" : "");
+                }
             }
             foreach (string n in d.Notes) Console.WriteLine("   note: " + n);
             if (d.Valid && d.DeltaV < req.TargetDeltaV - 1) bad++;

@@ -708,6 +708,26 @@ namespace LaunchPlanner
             return atmosphere ? (e.IspAsl + e.IspVac) / 2 : e.IspVac;
         }
 
+        /// <summary>
+        /// Delta-v of a burn that starts in the home atmosphere: the Isp climbs from sea level to vacuum over the
+        /// first half of the ascent, then stays at vacuum. A long first stage (an SSTO) spends most of its
+        /// propellant up there, where the halfway Isp would undercount it.
+        /// </summary>
+        double AscentBurn(PartInfo e, double mass, double end, double startDeltaV)
+        {
+            double airDv = Math.Max(1, req.AscentDeltaV * 0.5);
+            double dv = 0;
+            const int Steps = 60;
+            double step = (mass - end) / Steps;
+            for (int k = 0; k < Steps; k++)
+            {
+                double x = Math.Min(1, (startDeltaV + dv) / airDv);
+                double isp = e.IspAsl + (e.IspVac - e.IspAsl) * x;
+                dv += isp * G0 * Math.Log((mass - k * step) / (mass - (k + 1) * step));
+            }
+            return dv;
+        }
+
         static double MassFlow(PartInfo e)
         {
             return e.ThrustVacKN / (e.IspVac * G0);   // t/s, constant regardless of pressure
@@ -788,7 +808,7 @@ namespace LaunchPlanner
 
                 double end = mass - coreFuel;
                 if (end <= 0) return -1;
-                dv += thrC / mdotC * Math.Log(mass / end);
+                dv += atmo ? AscentBurn(s.Engine, mass, end, total + dv) : thrC / mdotC * Math.Log(mass / end);
                 mass = end - s.DryMass;
 
                 s.Twr = liftThrust / (s.MassStart * req.HomeGravity);
@@ -1724,6 +1744,8 @@ namespace LaunchPlanner
             return first;
         }
 
+        const double CoreOutlasts = 0.97;   // booster burn time at most this share of the core's
+
         LauncherDesign Quantized(LauncherDesign d, string variant, string description)
         {
             d.Variant = variant;
@@ -1761,13 +1783,22 @@ namespace LaunchPlanner
                 double wanted = first.Fuel;
                 first.Coupler = Coupler(first.Size, first.Engine, first.EngineCount);
                 first.CouplerMass = first.Coupler != null ? first.Coupler.DryMassT : 0;
-                for (int attempt = 0; attempt < 12; attempt++)
+                for (int attempt = 0; attempt < 20; attempt++)
                 {
                     SetFuel(first, wanted);
                     Quantize(d, 0);
                     first.Coupler = Coupler(first.Size, first.Engine, first.EngineCount);
                     first.CouplerMass = first.Coupler != null ? first.Coupler.DryMassT : 0;
                     double dv = Simulate(d);
+                    // Rounded up to whole tanks, independent liquid boosters can outlast the core: it would flame out
+                    // first and ride along dead, with nothing pushing between the booster drop and the next stage.
+                    BoosterPlan fb = first.Boosters;
+                    if (fb != null && fb.Count > 0 && !fb.Solid && !fb.Crossfeed)
+                    {
+                        double tCore = (first.Fuel + first.EngineFuel) / Math.Max(1e-9, first.EngineCount * MassFlow(first.Engine));
+                        double tBooster = fb.Fuel / Math.Max(1e-9, fb.EnginesEach * MassFlow(fb.Part));
+                        if (tBooster > CoreOutlasts * tCore) { fb.Share *= CoreOutlasts * tCore / tBooster; continue; }
+                    }
                     if (dv >= req.TargetDeltaV) break;
                     wanted = Math.Max(wanted * 1.01, first.Fuel * (1 + (req.TargetDeltaV - dv) / req.TargetDeltaV));
                 }
