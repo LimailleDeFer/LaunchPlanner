@@ -17,6 +17,10 @@ namespace LaunchPlanner
         public Vec3 ExhaustDir = new Vec3(0, -1, 0);           // exhaust direction of an engine, in the part's frame
         public List<string> OutputNodes = new List<string>();  // multi-coupler: bottom nodes
         public List<Vec3> OutputPos = new List<Vec3>();
+        public double MinY = double.NaN;  // lowest point of the model in the part's frame (NaN if unknown): nozzle, folded leg
+
+        /// <summary>Lowest point of the part relative to its origin: the model if known, otherwise the bottom node.</summary>
+        public double Lowest { get { double b = BottomNode != null ? BottomY : -Height / 2; return double.IsNaN(MinY) ? b : Math.Min(b, MinY); } }
 
         public double Height { get { return TopNode != null && BottomNode != null ? TopY - BottomY : Diameter; } }
     }
@@ -240,14 +244,29 @@ namespace LaunchPlanner
             BoosterPlan boosters = d.Stages[0].Boosters;
             int boosterDrops = boosters == null || boosters.Count == 0 ? 0 : boosters.Crossfeed ? boosters.Count / 2 : 1;
             bool lander = d.Lander != null;
-            actions = 1 + boosterDrops + (k - 1) + (d.PayloadDecoupler != null ? 1 : 0) + (lander ? 1 : 0);
+            // The lander's own sequence, after the launcher is dropped: drogues, heat shield jettisoned, main chutes, engine.
+            int landerRanks = !lander ? 0 : 1 + (d.Lander.Chute != null ? 1 : 0) + (d.Lander.HeatShield != null ? 1 : 0) + (d.Lander.Drogue != null ? 1 : 0);
+            actions = 1 + boosterDrops + (k - 1) + (d.PayloadDecoupler != null ? 1 : 0) + landerRanks;
 
             CraftPart cursor = null;
-            if (lander) cursor = AddLander(d);
+            if (lander)
+            {
+                int rank = actions - 2;
+                chuteRank = d.Lander.Chute != null ? rank-- : -1;
+                shieldRank = d.Lander.HeatShield != null ? rank-- : -1;
+                drogueRank = d.Lander.Drogue != null ? rank-- : -1;
+                cursor = AddLander(d);
+                if (d.Lander.HeatShield != null)
+                {
+                    cursor = StackBelowEngines(cursor, d.Lander.HeatShield);
+                    cursor.Activation = shieldRank;
+                    landerTank = cursor; landerEngine = cursor;   // the launcher's decoupler goes under the shield
+                }
+            }
             if (d.PayloadDecoupler != null)
             {
-                cursor = cursor == null ? Make(d.PayloadDecoupler) : StackBelowEngines(cursor, d.PayloadDecoupler);
-                cursor.Activation = actions - 1 - (lander ? 1 : 0);
+                cursor = cursor == null ? Make(d.PayloadDecoupler) : lander ? StackBelowEngines(cursor, d.PayloadDecoupler) : StackBelow(cursor, d.PayloadDecoupler);
+                cursor.Activation = actions - 1 - landerRanks;
             }
             else
             {
@@ -276,7 +295,7 @@ namespace LaunchPlanner
                 if (cursor == null) { cursor = Make(s.Engine); count--; }   // stage without a tank: the engine serves as the root
                 List<CraftPart> engines = AddEngines(cursor, s, count, ignition);
                 stageParts.AddRange(engines);
-                if (att != null && stageTanks.Count > 0) AddRcs(stageTanks, att, i + 1);
+                if (att != null && stageTanks.Count > 0) AddRcs(stageTanks, att, "Stage " + (i + 1));
 
                 if (i == 0)
                 {
@@ -322,7 +341,7 @@ namespace LaunchPlanner
         /// RCS thrusters in rings at the top and the bottom of the stage's tanks, as far apart as possible for leverage,
         /// turned between the boosters; radial monopropellant tanks at mid-height of the tank under the wheels.
         /// </summary>
-        void AddRcs(List<CraftPart> tanks, AttitudePlan a, int stage)
+        void AddRcs(List<CraftPart> tanks, AttitudePlan a, string stage)
         {
             if (a.Rcs != null && a.RcsPerRing > 0)
             {
@@ -353,7 +372,7 @@ namespace LaunchPlanner
             if (a.Rcs != null) what.Add(string.Format("{0} × {1} in {2}", a.Rings * a.RcsPerRing, a.Rcs.Title, a.Rings == 2 ? "two rings, top and bottom" : "a ring at the bottom"));
             if (a.MonoTank != null) what.Add(string.Format("{0} × {1} ({2:0.##} t of monopropellant)", a.MonoTanks, a.MonoTank.Title, a.MonoT));
             else if (a.Rcs != null) what.Add("no monopropellant tank unlocked: the RCS draws on the payload's");
-            Notes.Add(string.Format("Stage {0}: {1}. Turn RCS on (R) to steer while the engines are off.", stage, string.Join(", ", what.ToArray())));
+            Notes.Add(string.Format("{0}: {1}. Turn RCS on (R) to steer while the engines are off.", stage, string.Join(", ", what.ToArray())));
         }
 
         List<CraftPart> Ring(CraftPart host, PartInfo info, int count, double firstAngle, double y)
@@ -369,38 +388,148 @@ namespace LaunchPlanner
         }
 
         CraftPart landerTank, landerEngine;
+        int chuteRank, shieldRank, drogueRank;
 
         /// <summary>
-        /// Lander stage, root of the launcher: the payload attaches to its top tank. Legs in a cross on the
-        /// bottom tank; the engine ignites after the launcher's last stage is dropped.
+        /// Lander stage, root of the launcher: the payload attaches to its top. Central tanks with the engines below,
+        /// radial tanks around them (tops aligned), legs on the outer side of the radial tanks (or on the central tank),
+        /// high enough that the folded legs stay above the bottom of the engines. The engine ignites after the
+        /// launcher's last stage is dropped.
         /// </summary>
         CraftPart AddLander(LauncherDesign d)
         {
             StagePlan s = d.Lander;
+            AttitudePlan att = s.Attitude;
             CraftPart cursor = null;
+            List<CraftPart> cores = new List<CraftPart>();
             foreach (TankUse t in s.Tanks)
-                for (int n = 0; n < t.Count; n++) cursor = cursor == null ? Make(t.Tank) : StackBelow(cursor, t.Tank);
+                for (int n = 0; n < t.Count; n++)
+                {
+                    if (att != null && cores.Count == att.Joint) cursor = AddAttitudeStack(cursor, att);
+                    cursor = cursor == null ? Make(t.Tank) : StackBelow(cursor, t.Tank);
+                    cores.Add(cursor);
+                }
             List<CraftPart> engines = AddEngines(cursor, s, s.EngineCount, actions - 1);
             landerTank = cursor;
             landerEngine = engines.Count == 1 && engines[0].Attach == AttachKind.Stack ? engines[0] : null;
+            double bottom = Bottom(cursor);
+            foreach (CraftPart e in engines) bottom = Math.Min(bottom, e.Pos.Y + e.Shape.Lowest);
 
-            if (d.LanderLegs != null && d.LanderLegCount > 0)
+            // Radial tanks around the central tanks, their tops level with the top of the central tanks.
+            List<CraftPart> radials = new List<CraftPart>();
+            double coreTop = Top(cores[0]), coreR = cores[0].Shape.Diameter / 2;
+            for (int k = 0; k < s.RadialCount && s.RadialTank != null; k++)
             {
-                List<CraftPart> legs = new List<CraftPart>();
-                double span = Top(cursor) - Bottom(cursor);
-                double y = Bottom(cursor) + Math.Min(0.4, 0.25 * span);
-                for (int i = 0; i < d.LanderLegCount; i++)
-                {
-                    Vec3 outward = new Vec3(0, 0, 1).Yaw(45 + 360.0 * i / d.LanderLegCount);
-                    Vec3 point = new Vec3(cursor.Pos.X, y, cursor.Pos.Z) + outward * (cursor.Shape.Diameter / 2);
-                    legs.Add(SurfaceAt(cursor, d.LanderLegs, point, outward));
-                }
-                SetSymmetry(legs);
-                Notes.Add(string.Format("Lander: {0} × {1} (press G to deploy them). Check in the editor that they extend lower than the nozzle.",
-                    d.LanderLegCount, d.LanderLegs.Title));
+                Vec3 outward = new Vec3(0, 0, 1).Yaw(360.0 * k / s.RadialCount);
+                PartShape rs = shapes.Get(s.RadialTank);
+                double y = coreTop - (rs.TopNode != null ? rs.TopY : rs.Height / 2);
+                CraftPart host = cores.Find(c => y <= Top(c) && y >= Bottom(c)) ?? cores[cores.Count - 1];
+                CraftPart r = SurfaceAt(host, s.RadialTank, new Vec3(host.Pos.X, y, host.Pos.Z) + outward * coreR, outward);
+                // Side by side with the central tank, wherever the model puts its surface node.
+                r.Pos = new Vec3(host.Pos.X, y, host.Pos.Z) + outward * (coreR + rs.Diameter / 2);
+                radials.Add(r);
             }
+            SetSymmetry(radials);
+            if (radials.Count > 0)
+            {
+                Notes.Add(string.Format("Lander: {0} × {1} around its central tank; they feed the engine through it.", radials.Count, s.RadialTank.Title));
+                foreach (CraftPart r in radials) bottom = Math.Min(bottom, r.Pos.Y + r.Shape.Lowest);
+            }
+
+            if (d.LanderLegs != null && d.LanderLegCount > 0) AddLegs(d, cores, radials, bottom);
             else Notes.Add("No landing legs unlocked: the lander will land on its nozzle.");
+            if (att != null) AddRcs(cores, att, "Lander");
+            if (s.Chute != null) AddChutes(d, cores, radials);
             return cursor;
+        }
+
+        /// <summary>
+        /// Main chutes in a ring near the top of the central tank (between the radial tanks or the legs), drogues on the
+        /// outer side of the radial tanks, or between the main chutes. Staged after the launcher's drop: drogues,
+        /// heat shield jettisoned, main chutes, then the engine for the touchdown.
+        /// </summary>
+        void AddChutes(LauncherDesign d, List<CraftPart> cores, List<CraftPart> radials)
+        {
+            StagePlan s = d.Lander;
+            CraftPart top = cores[0];
+            double span = Top(top) - Bottom(top);
+            double y = Top(top) - Math.Min(0.3, 0.2 * span);
+            double first = radials.Count > 0 ? 180.0 / radials.Count : 0;   // legs on the central tank sit at 45°
+            List<CraftPart> mains = Ring(top, s.Chute, s.Chutes, first, y);
+            foreach (CraftPart c in mains) c.Activation = chuteRank;
+            SetSymmetry(mains);
+            List<CraftPart> drogues = new List<CraftPart>();
+            if (s.Drogue != null)
+            {
+                if (radials.Count == s.Drogues)
+                    foreach (CraftPart r in radials)
+                    {
+                        Vec3 outward = new Vec3(r.Pos.X - top.Pos.X, 0, r.Pos.Z - top.Pos.Z).Unit;
+                        double ry = Top(r) - Math.Min(0.3, 0.2 * (Top(r) - Bottom(r)));
+                        drogues.Add(SurfaceAt(r, s.Drogue, new Vec3(r.Pos.X, ry, r.Pos.Z) + outward * (r.Shape.Diameter / 2), outward));
+                    }
+                else drogues = Ring(top, s.Drogue, s.Drogues, first + 180.0 / s.Drogues, y);
+                foreach (CraftPart c in drogues) c.Activation = drogueRank;
+                SetSymmetry(drogues);
+            }
+            Notes.Add(string.Format("Lander entry into {0}: {1}{2}{3} × {4} (about {5:0} m/s under them{6}). Staging after the launcher's drop: {7}.",
+                "the atmosphere", s.HeatShield != null ? s.HeatShield.Title + ", " : "",
+                s.Drogue != null ? s.Drogues + " × " + s.Drogue.Title + ", " : "", s.Chutes, s.Chute.Title, s.TouchdownSpeed,
+                s.TouchdownSpeed > TouchdownSpeedLimit ? ": the engine finishes the landing" : ", the engine only softens the touchdown",
+                string.Join(", then ", new List<string> { s.Drogue != null ? "drogues" : null, s.HeatShield != null ? "heat shield jettisoned" : null,
+                    "main chutes", "engine" }.FindAll(x => x != null).ToArray())));
+        }
+
+        const double TouchdownSpeedLimit = 10;
+
+        /// <summary>
+        /// Legs on the outer side of the radial tanks (all of them, or every other one), otherwise on the central tank.
+        /// Each leg is set as low as possible while its folded foot stays above the bottom of the lander, so that it
+        /// neither hangs into the stage below nor ends up too short once deployed.
+        /// </summary>
+        void AddLegs(LauncherDesign d, List<CraftPart> cores, List<CraftPart> radials, double bottom)
+        {
+            int count = d.LanderLegCount;
+            List<KeyValuePair<CraftPart, double>> mounts = new List<KeyValuePair<CraftPart, double>>();   // host, heading
+            if (radials.Count > 0 && radials.Count % count == 0)
+                for (int i = 0; i < count; i++) mounts.Add(new KeyValuePair<CraftPart, double>(radials[i * radials.Count / count], 360.0 * i / count));
+            else if (radials.Count == 2 && count == 4)
+                for (int i = 0; i < 4; i++) mounts.Add(new KeyValuePair<CraftPart, double>(i % 2 == 0 ? radials[i / 2] : cores[cores.Count - 1], 90.0 * i));
+            else
+                for (int i = 0; i < count; i++) mounts.Add(new KeyValuePair<CraftPart, double>(cores[cores.Count - 1], 45 + 360.0 * i / count));
+
+            PartShape ls = shapes.Get(d.LanderLegs);
+            bool known = !double.IsNaN(ls.MinY);
+            double drop = known ? ls.SrfPos.Y - ls.MinY : 0;   // from the attach point down to the folded foot
+            bool tooLow = false;
+            List<CraftPart> onRadials = new List<CraftPart>(), onCore = new List<CraftPart>();
+            foreach (KeyValuePair<CraftPart, double> m in mounts)
+            {
+                CraftPart host = m.Key;
+                double span = Top(host) - Bottom(host);
+                double y = Bottom(host) + Math.Min(0.4, 0.25 * span);
+                if (known && y - drop < bottom + 0.05)
+                {
+                    y = bottom + 0.05 + drop;
+                    double highest = Top(host) - Math.Min(0.2, 0.1 * span);
+                    if (y > highest) { y = highest; tooLow = true; }
+                }
+                Vec3 outward = new Vec3(0, 0, 1).Yaw(m.Value);
+                Vec3 point = new Vec3(host.Pos.X, y, host.Pos.Z) + outward * (host.Shape.Diameter / 2);
+                (radials.Contains(host) ? onRadials : onCore).Add(SurfaceAt(host, d.LanderLegs, point, outward));
+            }
+            SetSymmetry(onRadials);
+            SetSymmetry(onCore);
+            string where = onRadials.Count > 0 ? "on the radial tanks" : "on the central tank";
+            if (!known)
+                Notes.Add(string.Format("Lander: {0} × {1} {2} (press G to deploy them). Check in the editor that they extend lower than the nozzle.",
+                    count, d.LanderLegs.Title, where));
+            else if (tooLow)
+                Notes.Add(string.Format("Lander: {0} × {1} {2} (press G to deploy them). Folded, they hang below the engine: the tanks are too short to raise them more.",
+                    count, d.LanderLegs.Title, where));
+            else
+                Notes.Add(string.Format("Lander: {0} × {1} {2}, folded above the bottom of the engine (press G to deploy them).",
+                    count, d.LanderLegs.Title, where));
         }
 
         /// <summary>Decoupler under the lander: under its central engine, otherwise under its tank (engines in a ring).</summary>

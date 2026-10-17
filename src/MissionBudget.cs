@@ -64,6 +64,8 @@ namespace LaunchPlanner
         public double LanderDeltaV;
         public double LanderGravity;
         public string LanderBody = "";
+        public double LanderPressureAtm;   // 0: no atmosphere
+        public double LanderEntrySpeed;
     }
 
     /// <summary>
@@ -239,6 +241,8 @@ namespace LaunchPlanner
                     budget.LanderDeltaV = lander;
                     budget.LanderGravity = dest.SurfaceGravity;
                     budget.LanderBody = dest.Name;
+                    budget.LanderPressureAtm = dest.HasAtmosphere ? dest.PressureAtm : 0;
+                    budget.LanderEntrySpeed = dest.LowOrbitSpeed;
                     budget.LauncherDeltaV = Math.Max(0, budget.LauncherDeltaV - lander);
                 }
                 else foreach (Phase p in budget.Phases) p.LanderDeltaV = 0;

@@ -1,3 +1,4 @@
+using System.Linq;
 // Runs the launcher computation on an inventory exported from the game ("Export CSV" button).
 //   mcs tests/LauncherDesignerTest.cs src/LauncherDesigner.cs src/PartInfo.cs src/CraftBuilder.cs src/CraftWriter.cs -out:build/designer.exe
 //   mono build/designer.exe inventory.csv [payload mass t] [Δv m/s]
@@ -51,6 +52,8 @@ static class LauncherDesignerTest
             };
             if (col.ContainsKey("category")) p.Category = c[col["category"]];
             if (col.ContainsKey("diameter_m") && c[col["diameter_m"]].Length > 0) p.DiameterM = double.Parse(c[col["diameter_m"]], CultureInfo.InvariantCulture);
+            // Older exports have no storage column: the service tanks are the ones with storage.
+            p.Storage = col.ContainsKey("storage") ? c[col["storage"]] == "yes" : p.Name.StartsWith("service-tank");
             if (col.ContainsKey("nose")) p.NoseTop = c[col["nose"]] == "yes" || c[col["nose"]] == "oui";
             if (col.ContainsKey("height_m") && c[col["height_m"]].Length > 0) p.HeightM = double.Parse(c[col["height_m"]], CultureInfo.InvariantCulture);
             foreach (string r in c[col["resources"]].Split(' '))
@@ -103,6 +106,18 @@ static class LauncherDesignerTest
             req.Legs.Add(new PartInfo { Name = "landingLeg1", Title = "LT-1", DryMassT = 0.05, Unlocked = true, Cost = 440 });
             req.Legs.Add(new PartInfo { Name = "landingLeg1-2", Title = "LT-2", DryMassT = 0.1, Unlocked = true, Cost = 640 });
         }
+        // ATMO=pressure (atm),entry speed (m/s): the destination has an atmosphere; stock-like chutes and shields
+        string atmo = Environment.GetEnvironmentVariable("ATMO");
+        if (!string.IsNullOrEmpty(atmo))
+        {
+            string[] l = atmo.Split(',');
+            req.LanderPressureAtm = D(l[0]); req.LanderEntrySpeed = D(l[1]);
+            req.Parachutes.Add(new PartInfo { Name = "radialDrogue", Title = "Mk12-R drogue", Sizes = "srf", DryMassT = 0.075, Cost = 150, ChuteDrag = 170, Drogue = true, Unlocked = true });
+            req.Parachutes.Add(new PartInfo { Name = "parachuteRadial", Title = "Mk2-R", Sizes = "srf", DryMassT = 0.1, Cost = 400, ChuteDrag = 500, Unlocked = true });
+            foreach (string size in new[] { "size1", "size2", "size3" })
+                req.HeatShields.Add(new PartInfo { Name = "HeatShield" + size, Title = "Heat shield " + size, Sizes = size, Kind = PartKind.Decoupler,
+                    DryMassT = 0.1 * CraftBuilder.DiameterOf(size), WetMassT = 0.3 * CraftBuilder.DiameterOf(size), DiameterM = CraftBuilder.DiameterOf(size) * 1.04, HeightM = 0.3, Cost = 600, Unlocked = true });
+        }
         // Fake nose cones and multi-couplers (they are not in the CSV inventory), like the stock ones.
         // CONES=size1,size2: only these cone sizes are unlocked
         string cones = Environment.GetEnvironmentVariable("CONES");
@@ -130,6 +145,14 @@ static class LauncherDesignerTest
             req.RcsThrusters.Add(new PartInfo { Name = "fakeRcs1", Title = "RCS block", Sizes = "srf", Kind = PartKind.Tank, Unlocked = true, DryMassT = 0.05, Cost = 620, RcsThrustKN = 1, RcsNozzles = 4, RcsIsp = 240 });
             req.RcsThrusters.Add(new PartInfo { Name = "fakeRcs2", Title = "Linear RCS", Sizes = "srf", Kind = PartKind.Tank, Unlocked = true, DryMassT = 0.03, Cost = 300, RcsThrustKN = 2, RcsNozzles = 1, RcsIsp = 240 });
         }
+        // PAYLOAD=height,width,bottom size: shape of the payload (e.g. 3,2.5,size2)
+        string shape = Environment.GetEnvironmentVariable("PAYLOAD");
+        if (!string.IsNullOrEmpty(shape))
+        {
+            string[] l = shape.Split(',');
+            req.PayloadHeight = D(l[0]); req.PayloadWidth = D(l[1]);
+            if (l.Length > 2) req.PayloadBottomSize = l[2];
+        }
         req.PayloadTorqueKNm = D(Environment.GetEnvironmentVariable("PAYLOADTORQUE") ?? "0");
         req.PayloadRcsKN = D(Environment.GetEnvironmentVariable("PAYLOADRCS") ?? "0");
         Stopwatch sw = Stopwatch.StartNew();
@@ -150,6 +173,12 @@ static class LauncherDesignerTest
                 Console.WriteLine("   Lander (Ø {0}): {1} × {2}; {3}; {4} × {5}; Δv {6:0}, TWR {7:0.00}, {8:0.0} t",
                     LauncherDesigner.Diameter(d.Lander.Size), d.Lander.EngineCount, d.Lander.Engine.Title, Tanks(d.Lander.Tanks),
                     d.LanderLegCount, d.LanderLegs != null ? d.LanderLegs.Title : "-", d.Lander.DeltaV, d.Lander.Twr, d.Lander.TotalMass);
+            if (d.Lander != null)
+                Console.WriteLine("     around it: {0} × {1}; height {2:0.0} m, width {3:0.0} m; {4}", d.Lander.RadialCount,
+                    d.Lander.RadialTank != null ? d.Lander.RadialTank.Title : "-", d.Lander.HeightM, d.Lander.WidthM,
+                    d.Lander.Attitude != null ? (d.Lander.Attitude.Rcs != null ? d.Lander.Attitude.Rings * d.Lander.Attitude.RcsPerRing + " RCS" : "no RCS")
+                        + (d.Lander.Attitude.MonoTank != null ? ", " + d.Lander.Attitude.MonoTanks + " × " + d.Lander.Attitude.MonoTank.Title : "")
+                        + (d.Lander.Attitude.Wheel != null ? ", " + d.Lander.Attitude.Wheels + " × " + d.Lander.Attitude.Wheel.Title : "") : "no attitude");
             for (int i = d.Stages.Count - 1; i >= 0; i--)
             {
                 StagePlan s = d.Stages[i];
@@ -177,6 +206,7 @@ static class LauncherDesignerTest
                 CraftBuilder builder = new CraftBuilder(new FakeShapes()) { FuelLine = new PartInfo { Name = "fuelLine", Title = "FTX-2", Kind = PartKind.Tank } };
                 List<CraftPart> craft = builder.Build(d);
                 bad += CheckCraft(craft);
+                if (d.Lander != null) bad += CheckLander(craft, d);
                 string path = System.IO.Path.Combine(craftDir, d.Variant.Replace(' ', '-') + ".craft");
                 System.IO.File.WriteAllText(path, CraftWriter.Write(builder, craft, d.Variant, "1.12.5").ToText());
                 Console.WriteLine("{0}: {1} parts (estimated {4}), {2} activation stages → {3}", d.Variant, craft.Count, builder.ActionCount, path, d.PartCount);
@@ -186,6 +216,53 @@ static class LauncherDesignerTest
     }
 
     /// <summary>Checks link consistency: a single root, reciprocal parents and children, reciprocal symmetries.</summary>
+    /// <summary>Lander geometry: radial tanks against the central tank without overlapping, folded legs above the engine's bottom.</summary>
+    static int CheckLander(List<CraftPart> craft, LauncherDesign d)
+    {
+        int errors = 0;
+        // Down the stack from the root: wheels, central tanks, then the lander's engines.
+        CraftPart core = null, p0 = craft[0];
+        while (p0 != null && p0.Info.Kind == PartKind.Tank)
+        {
+            if (p0.Info.TorqueKNm <= 0) core = core ?? p0;
+            CraftPart next = p0.Children.Find(c => c.Attach == AttachKind.Stack);
+            if (next == null || next.Info.Kind != PartKind.Tank) break;
+            p0 = next;
+        }
+        CraftPart last = p0;
+        List<CraftPart> radials = craft.FindAll(p => p.Info == d.Lander.RadialTank && p.Attach == AttachKind.Surface);
+        List<CraftPart> legs = craft.FindAll(p => p.Info == d.LanderLegs);
+        double bottom = double.MaxValue;
+        foreach (CraftPart p in last.Children)
+            if (p.Info == d.Lander.Engine) bottom = Math.Min(bottom, p.Pos.Y + p.Shape.Lowest);
+        foreach (CraftPart c in last.Children)
+            if (c.Info.StackOutputs > 0) foreach (CraftPart p in c.Children) bottom = Math.Min(bottom, p.Pos.Y + p.Shape.Lowest);
+        double coreR = core.Shape.Diameter / 2;
+        foreach (CraftPart r in radials)
+        {
+            double dist = Math.Sqrt(r.Pos.X * r.Pos.X + r.Pos.Z * r.Pos.Z), rr = r.Shape.Diameter / 2;
+            if (Math.Abs(dist - coreR - rr) > 0.01) { Console.WriteLine("   ERROR: radial tank at {0:0.00} m from the axis, {1:0.00} expected", dist, coreR + rr); errors++; }
+            foreach (CraftPart q in radials)
+                if (q != r && (q.Pos - r.Pos).Length < 2 * rr - 0.01) { Console.WriteLine("   ERROR: radial tanks overlap"); errors++; }
+            double top = r.Pos.Y + r.Shape.TopY, coreTop = core.Pos.Y + core.Shape.TopY;
+            if (Math.Abs(top - coreTop) > 0.01) { Console.WriteLine("   ERROR: radial top {0:0.00}, core top {1:0.00}", top, coreTop); errors++; }
+            if (r.Pos.Y + r.Shape.Lowest < bottom - 0.01) { Console.WriteLine("   ERROR: radial tank below the engine"); errors++; }
+        }
+        foreach (CraftPart l in legs)
+        {
+            double foot = l.Pos.Y + l.Shape.MinY;
+            double reach = Math.Sqrt(l.Pos.X * l.Pos.X + l.Pos.Z * l.Pos.Z);
+            if (foot < bottom - 0.01) { Console.WriteLine("   ERROR: folded leg foot at {0:0.00}, engine bottom {1:0.00}", foot, bottom); errors++; }
+            if (reach < coreR - 0.01) { Console.WriteLine("   ERROR: leg inside the central tank"); errors++; }
+        }
+        foreach (CraftPart p in craft)
+            if (p.Info.ChuteDrag > 0 || p.Info.Name.StartsWith("HeatShield") || p.Info == d.Lander.Engine && p.Activation >= 0 && last.Children.Contains(p))
+                Console.WriteLine("   lander part {0} at y {1:0.00}, heading {2:0}, activation {3}", p.Info.Title, p.Pos.Y, new Vec3(p.Pos.X, 0, p.Pos.Z).Heading, p.Activation);
+        Console.WriteLine("   lander geometry: core Ø {0:0.##}, {1} radial tanks, {2} legs, engine bottom {3:0.00}, lowest folded foot {4:0.00}",
+            core.Shape.Diameter, radials.Count, legs.Count, bottom, legs.Count > 0 ? legs.ConvertAll(l => l.Pos.Y + l.Shape.MinY).Min() : 0);
+        return errors;
+    }
+
     static int CheckCraft(List<CraftPart> craft)
     {
         int errors = 0;
@@ -224,6 +301,13 @@ class FakeShapes : IPartShapes
         }
         s.SrfPos = new Vec3(0, 0, p.Kind == PartKind.Decoupler ? 0.1 : -d / 2);
         s.SrfDir = new Vec3(0, 0, p.Kind == PartKind.Decoupler ? -1 : 1);
+        // Landing legs, like the stock LT-1: attached high on their bracket, the folded foot about a metre below.
+        if (p.Name.ToLower().Contains("landingleg"))
+        {
+            s = new PartShape { Diameter = 0.4, SrfPos = new Vec3(0, 0.2, 0), SrfDir = new Vec3(0, 0, 1), MinY = -0.9 };
+        }
+        // Engines: the nozzle ends a little below the bottom node.
+        if (p.Kind == PartKind.Engine) s.MinY = -h / 2 - 0.1;
         s.Modules.Add("ModulePartVariants"); s.ModuleIds.Add("");
         if (p.Variant.Length > 0) { s.Modules.Add("ModuleB9PartSwitch"); s.ModuleIds.Add(p.VariantModule); }
         if (p.Kind == PartKind.Decoupler) { s.Modules.Add("ModuleToggleCrossfeed"); s.ModuleIds.Add(""); }

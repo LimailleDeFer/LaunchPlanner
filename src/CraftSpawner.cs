@@ -56,6 +56,7 @@ namespace LaunchPlanner
                     Vector3 d = prefab.transform.InverseTransformDirection(thrust.forward);
                     if (d.sqrMagnitude > 0.01f) shape.ExhaustDir = new Vec3(d.x, d.y, d.z);
                 }
+                shape.MinY = LowestPoint(prefab);
                 foreach (PartModule m in prefab.Modules)
                 {
                     shape.Modules.Add(m.moduleName);
@@ -64,6 +65,35 @@ namespace LaunchPlanner
             }
             cache[part.Name] = shape;
             return shape;
+        }
+
+        /// <summary>Lowest point of the part's meshes (as modelled, legs folded), in the part's frame; NaN if no mesh.</summary>
+        static double LowestPoint(Part prefab)
+        {
+            double lowest = double.MaxValue;
+            try
+            {
+                Matrix4x4 toPart = prefab.transform.worldToLocalMatrix;
+                foreach (MeshFilter f in prefab.GetComponentsInChildren<MeshFilter>(true))
+                    if (f.sharedMesh != null && !PartInventory.Hidden(f.transform, prefab.transform))
+                        lowest = Math.Min(lowest, Lowest(toPart * f.transform.localToWorldMatrix, f.sharedMesh.bounds));
+                foreach (SkinnedMeshRenderer r in prefab.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                    if (r.sharedMesh != null && !PartInventory.Hidden(r.transform, prefab.transform))
+                        lowest = Math.Min(lowest, Lowest(toPart * r.transform.localToWorldMatrix, r.sharedMesh.bounds));
+            }
+            catch (Exception) { return double.NaN; }
+            return lowest == double.MaxValue ? double.NaN : lowest;
+        }
+
+        static double Lowest(Matrix4x4 m, Bounds b)
+        {
+            double lowest = double.MaxValue;
+            for (int i = 0; i < 8; i++)
+            {
+                Vector3 corner = new Vector3((i & 1) == 0 ? b.min.x : b.max.x, (i & 2) == 0 ? b.min.y : b.max.y, (i & 4) == 0 ? b.min.z : b.max.z);
+                lowest = Math.Min(lowest, m.MultiplyPoint3x4(corner).y);
+            }
+            return lowest;
         }
     }
 

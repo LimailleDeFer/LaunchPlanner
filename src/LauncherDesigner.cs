@@ -106,6 +106,21 @@ namespace LaunchPlanner
         public PartInfo Coupler;        // multi-coupler under the tank, carrying the engine cluster
         public double CouplerMass;
         public AttitudePlan Attitude;   // reaction wheels and RCS, chosen once the tanks are real
+        // Lander: tanks attached around the central tank, and the landing legs
+        public PartInfo RadialTank;
+        public int RadialCount;
+        public int LegCount;
+        public double HeightM;          // lander: height from the top of its tanks to the bottom of its engine
+        public double WidthM;           // lander: central tank and the radial tanks around it
+        // Lander in an atmosphere: parachutes (kept) and heat shield (dropped before the landing burn)
+        public PartInfo Chute, Drogue, HeatShield;
+        public int Chutes, Drogues;
+        public double TouchdownSpeed;   // m/s under the main chutes alone
+
+        public double ChuteMass
+        {
+            get { return (Chute != null ? Chutes * Chute.DryMassT : 0) + (Drogue != null ? Drogues * Drogue.DryMassT : 0); }
+        }
 
         // Simulation results
         public double DeltaV;
@@ -118,7 +133,7 @@ namespace LaunchPlanner
 
         public double DryMass
         {
-            get { return EngineCount * Engine.DryMassT + TankDry + DecouplerMass + CouplerMass + (Attitude != null ? Attitude.Mass : 0); }
+            get { return EngineCount * Engine.DryMassT + TankDry + DecouplerMass + CouplerMass + (Attitude != null ? Attitude.Mass : 0) + ChuteMass; }
         }
 
         /// <summary>Propellant carried by the engines themselves (engine and tank in one part, such as some Tantares engines).</summary>
@@ -131,7 +146,7 @@ namespace LaunchPlanner
         {
             get
             {
-                double m = DryMass + Fuel + EngineFuel;
+                double m = DryMass + Fuel + EngineFuel + (HeatShield != null ? HeatShield.WetMassT : 0);
                 if (Boosters != null) m += Boosters.Count * (Boosters.DryEach + Boosters.FuelEach);
                 return m;
             }
@@ -193,6 +208,10 @@ namespace LaunchPlanner
         public double LanderTwr = 2;    // minimum TWR against that gravity
         public string LanderBody = "";
         public List<PartInfo> Legs = new List<PartInfo>();   // unlocked landing legs
+        public double LanderPressureAtm;   // surface pressure at the destination (0: no atmosphere)
+        public double LanderEntrySpeed;    // m/s, low-orbit speed at the destination: the speed of the entry
+        public List<PartInfo> Parachutes = new List<PartInfo>();
+        public List<PartInfo> HeatShields = new List<PartInfo>();
 
         public List<PartInfo> NoseCones = new List<PartInfo>();   // unlocked nose cones (top of boosters)
         public List<PartInfo> Adapters = new List<PartInfo>();    // unlocked structural adapters (narrow top), to reach a cone's size
@@ -233,6 +252,7 @@ namespace LaunchPlanner
         const int MaxTankParts = 6;   // beyond that, move to the next diameter up: wide base, narrowing stages
 
         readonly DesignRequest req;
+        double topMinDiameter;   // narrowest top stage: the lander's central tank
         readonly Dictionary<string, Mixture> mixtures = new Dictionary<string, Mixture>();
         readonly List<PartInfo> lowerEngines = new List<PartInfo>();
         readonly List<PartInfo> upperEngines = new List<PartInfo>();
@@ -490,6 +510,7 @@ namespace LaunchPlanner
             foreach (PartInfo p in req.Parts)
             {
                 if (!p.Unlocked || p.Kind != PartKind.Engine || p.ThrustVacKN <= 0 || p.IspVac <= 0) continue;
+                if (string.Equals((p.Title ?? "").Trim(), "deprecated", StringComparison.OrdinalIgnoreCase)) continue;   // retired by its mod
                 if (SizeOf(p).Length == 0) continue;   // radial engines: not for a stacked stage
                 string key = MixtureKey((p.Propellants ?? "").Split(new[] { '+' }));
                 if (!mixtures.ContainsKey(key)) continue;
@@ -1102,6 +1123,19 @@ namespace LaunchPlanner
             PartInfo legs;
             string problem;
             StagePlan lander = DesignLander(out legs, out problem);
+            // The engine is chosen before the RCS and parachutes are known: aim higher if they bring the TWR under the minimum.
+            double wantedTwr = req.LanderTwr;
+            for (int retry = 0; retry < 3 && lander != null && (lander.Twr < wantedTwr - 1e-3 || lander.DeltaV < req.LanderDeltaV - 1); retry++)
+            {
+                double asked = req.LanderTwr;
+                req.LanderTwr *= Math.Max(wantedTwr / lander.Twr, 1) * 1.05;
+                PartInfo l2;
+                string p2;
+                StagePlan again = DesignLander(out l2, out p2);
+                req.LanderTwr = asked;
+                if (again == null) break;
+                lander = again; legs = l2;
+            }
             if (lander == null)
             {
                 List<LauncherDesign> none = new List<LauncherDesign>();
@@ -1109,14 +1143,16 @@ namespace LaunchPlanner
                     none.Add(new LauncherDesign { Variant = v[0], Description = v[1], Problem = problem });
                 return none;
             }
-            int legCount = legs != null ? LanderLegs : 0;
+            int legCount = legs != null ? lander.LegCount : 0;
             double mass = req.PayloadMass, height = req.PayloadHeight, width = req.PayloadWidth;
             int parts = req.PayloadParts;
             // The launcher carries the payload and its lander.
             req.PayloadMass += lander.TotalMass + legCount * (legs != null ? legs.DryMassT : 0);
-            req.PayloadHeight += TanksHeight(lander.Tanks) + HeightOf(lander.Engine);
-            req.PayloadWidth = Math.Max(req.PayloadWidth, CraftBuilder.DiameterOf(lander.Size) + 1);
-            req.PayloadParts += TankParts(lander.Tanks) + lander.EngineCount + legCount;
+            req.PayloadHeight += lander.HeightM + HeightOf(lander.HeatShield);
+            req.PayloadWidth = Math.Max(req.PayloadWidth, lander.WidthM + 1);
+            req.PayloadParts += TankParts(lander.Tanks) + lander.RadialCount + lander.EngineCount + legCount
+                + (lander.Attitude != null ? lander.Attitude.Parts : 0) + lander.Chutes + lander.Drogues + (lander.HeatShield != null ? 1 : 0);
+            topMinDiameter = CraftBuilder.DiameterOf(lander.Size);
             try
             {
                 List<LauncherDesign> result = RunLauncher();
@@ -1134,6 +1170,7 @@ namespace LaunchPlanner
                 req.PayloadHeight = height;
                 req.PayloadWidth = width;
                 req.PayloadParts = parts;
+                topMinDiameter = 0;
             }
         }
 
@@ -1216,28 +1253,211 @@ namespace LaunchPlanner
                 return null;
             }
 
-            // Real tanks: the propellant is increased slightly until the required delta-v is covered.
-            double wanted = best.Fuel;
-            for (int attempt = 0; attempt < 8; attempt++)
+            if (!LayoutLander(best, legs))
             {
-                // Wide enough to carry the payload: a lander is squat.
-                double minD = Math.Max(CraftBuilder.DiameterOf(ClusterSize(best.Mixture, best.Engine, best.EngineCount)), 0.5 * req.PayloadWidth);
-                best.Size = SquatSize(wanted, best.Mixture, minD) ??
-                    ChooseSize(wanted, best.Mixture, best.Engine, best.EngineCount, minD, double.MaxValue);
-                double got, dry;
-                best.Tanks = Fill(wanted, best.Mixture, best.Size, out got, out dry);
-                best.Fuel = got;
-                best.TankDry = dry;
-                if (LanderDeltaV(best, legs) >= req.LanderDeltaV - 1) break;
-                wanted *= 1.05;
+                // No layout reaches the delta-v with one or two central tanks: a stack, as squat as possible.
+                double wanted = best.Fuel;
+                for (int attempt = 0; attempt < 8; attempt++)
+                {
+                    double minD = LanderMinDiameter(best);
+                    best.Size = SquatSize(wanted, best.Mixture, minD) ??
+                        ChooseSize(wanted, best.Mixture, best.Engine, best.EngineCount, minD, double.MaxValue);
+                    double got, dry;
+                    best.Tanks = Fill(wanted, best.Mixture, best.Size, out got, out dry);
+                    best.Fuel = got;
+                    best.TankDry = dry;
+                    if (LanderDeltaV(best, legs) >= req.LanderDeltaV - 1) break;
+                    wanted *= 1.05;
+                }
+                best.RadialTank = null;
+                best.RadialCount = 0;
+                best.LegCount = LanderLegs;
+                best.HeightM = TanksHeight(best.Tanks) + HeightOf(best.Engine);
+                best.WidthM = CraftBuilder.DiameterOf(best.Size);
+            }
+            // The RCS, its monopropellant and the parachutes weigh too: lay out again with them while the delta-v or the TWR falls short.
+            for (int pass = 0; pass < 3; pass++)
+            {
+                best.Attitude = PlanLanderAttitude(best, legs);
+                PlanReentry(best, legs);
+                if (LanderDeltaV(best, legs) >= req.LanderDeltaV - 1 && LanderTwrNow(best, legs) >= req.LanderTwr) break;
+                if (!LayoutLander(best, legs)) break;
             }
             best.DeltaV = LanderDeltaV(best, legs);
-            best.MassStart = req.PayloadMass + best.TotalMass + LanderLegs * (legs != null ? legs.DryMassT : 0);
+            // At ignition for the landing: the heat shield is already gone.
+            best.MassStart = req.PayloadMass + best.TotalMass - (best.HeatShield != null ? best.HeatShield.WetMassT : 0)
+                + best.LegCount * (legs != null ? legs.DryMassT : 0);
             best.Twr = best.EngineCount * best.Engine.ThrustVacKN / (best.MassStart * req.LanderGravity);
-            best.Cost = best.EngineCount * best.Engine.Cost + best.Fuel * TankCostPerTonne(best.Mixture, best.Size)
-                + LanderLegs * (legs != null ? legs.Cost : 0);
+            best.Cost = best.EngineCount * best.Engine.Cost + LanderTankCost(best) + best.LegCount * (legs != null ? legs.Cost : 0)
+                + (best.Attitude != null ? best.Attitude.Cost : 0) + (best.Chute != null ? best.Chutes * best.Chute.Cost : 0)
+                + (best.Drogue != null ? best.Drogues * best.Drogue.Cost : 0) + (best.HeatShield != null ? best.HeatShield.Cost : 0);
             if (best.Tanks.Count == 0) { problem = "No unlocked tank for the lander."; return null; }
             return best;
+        }
+
+        // Lander layout: a short central tank (a service tank with storage when there is one), with if needed
+        // narrow tanks attached around it rather than a tower of tanks.
+        const double LanderAspectWeight = 0.4;   // score penalty per unit of height / width
+        const double LanderPartWeight = 0.02;    // per radial tank
+        const double StorageBonus = 0.9;         // central tank with a cargo bay or inventory slots
+
+        /// <summary>Narrowest central tank: wide enough for the engines and for the payload's bottom.</summary>
+        double LanderMinDiameter(StagePlan s)
+        {
+            double payload = !string.IsNullOrEmpty(req.PayloadBottomSize) ? CraftBuilder.DiameterOf(req.PayloadBottomSize) : 0.5 * req.PayloadWidth;
+            return Math.Max(CraftBuilder.DiameterOf(ClusterSize(s.Mixture, s.Engine, s.EngineCount)), payload);
+        }
+
+        /// <summary>
+        /// Chooses the lander's tanks among all layouts that give the delta-v and the TWR: one or two central tanks,
+        /// alone or with 2 to 8 narrower tanks attached around them, no taller than the central tanks and the engine.
+        /// The lightest (or cheapest) wins, squat layouts being favored. False if none fits.
+        /// </summary>
+        bool LayoutLander(StagePlan s, PartInfo legs)
+        {
+            Mixture mix;
+            if (!mixtures.TryGetValue(s.Mixture, out mix)) return false;
+            double minD = LanderMinDiameter(s);
+            // As wide as the payload, more if the engines require it; never wider than the launch pad allows.
+            double maxD = req.PayloadWidth > 0 ? Math.Max(minD, req.PayloadWidth) : double.MaxValue;   // unknown payload: any width
+            if (req.MaxWidth > 0) maxD = Math.Min(maxD, req.MaxWidth);
+            double engineH = HeightOf(s.Engine);
+            double legMass = legs != null ? legs.DryMassT : 0;
+            double attitude = s.Attitude != null ? s.Attitude.StackHeight : 0;
+
+            double shield = s.HeatShield != null ? s.HeatShield.WetMassT : 0;   // dropped before the engine fires
+            double oldFuel = s.Fuel, oldDry = s.TankDry;
+            int oldLegs = s.LegCount;
+            double bestScore = double.MaxValue;
+            PartInfo bestCore = null, bestRadial = null;
+            int bestCores = 0, bestCount = 0;
+            foreach (PartInfo core in mix.Tanks)
+            {
+                double D = CraftBuilder.DiameterOf(SizeOf(core));
+                if (core.NoseTop || D < minD - 0.01 || D > maxD + 0.01) continue;
+                for (int cores = 1; cores <= 2; cores++)
+                {
+                    double coreH = cores * HeightOf(core);
+                    // Radial tanks only when the central tanks alone fall short, and no more of them than needed.
+                    s.Fuel = cores * Propellant(core);
+                    s.TankDry = cores * core.DryMassT;
+                    s.LegCount = LanderLegs;
+                    bool alone = LanderDeltaV(s, legs) >= req.LanderDeltaV - 1;
+                    List<PartInfo> radials = new List<PartInfo> { null };
+                    foreach (PartInfo r in mix.Tanks)
+                        if (!r.NoseTop && CraftBuilder.DiameterOf(SizeOf(r)) <= 0.5 * D + 0.01 && HeightOf(r) <= coreH + engineH + 0.01)
+                            radials.Add(r);
+                    foreach (PartInfo r in radials)
+                    {
+                        if ((r == null) != alone) continue;
+                        foreach (int n in r == null ? new[] { 0 } : new[] { 2, 3, 4, 6, 8 })
+                        {
+                            double dr = r != null ? CraftBuilder.DiameterOf(SizeOf(r)) : 0;
+                            if (n * dr > 0.9 * Math.PI * (D + dr)) continue;   // side by side around the central tank
+                            int legCount = LegCountFor(n);
+                            s.Fuel = cores * Propellant(core) + (r != null ? n * Propellant(r) : 0);
+                            s.TankDry = cores * core.DryMassT + (r != null ? n * r.DryMassT : 0);
+                            s.LegCount = legCount;
+                            if (LanderDeltaV(s, legs) < req.LanderDeltaV - 1) continue;
+                            double m0 = req.PayloadMass + s.TotalMass - shield + legCount * legMass;
+                            if (s.EngineCount * s.Engine.ThrustVacKN / (m0 * req.LanderGravity) < req.LanderTwr) break;
+                            double cost = s.EngineCount * s.Engine.Cost + cores * core.Cost + (r != null ? n * r.Cost : 0);
+                            double height = Math.Max(coreH, r != null ? HeightOf(r) : 0) + engineH + attitude;
+                            double width = D + 2 * dr;
+                            double score = (req.MinimizeCost ? cost : m0) * (1 + LanderAspectWeight * height / width)
+                                * (1 + LanderPartWeight * n) * (core.Storage ? StorageBonus : 1);
+                            if (score >= bestScore) continue;
+                            bestScore = score;
+                            bestCore = core; bestCores = cores; bestRadial = r; bestCount = n;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (bestCore == null) { s.Fuel = oldFuel; s.TankDry = oldDry; s.LegCount = oldLegs; return false; }
+            s.Size = SizeOf(bestCore);
+            s.Tanks = new List<TankUse>();
+            for (int i = 0; i < bestCores; i++) AddTank(s.Tanks, bestCore);
+            s.RadialTank = bestRadial;
+            s.RadialCount = bestCount;
+            s.LegCount = LegCountFor(bestCount);
+            s.Fuel = bestCores * Propellant(bestCore) + (bestRadial != null ? bestCount * Propellant(bestRadial) : 0);
+            s.TankDry = bestCores * bestCore.DryMassT + (bestRadial != null ? bestCount * bestRadial.DryMassT : 0);
+            s.HeightM = Math.Max(bestCores * HeightOf(bestCore), bestRadial != null ? HeightOf(bestRadial) : 0) + engineH + attitude;
+            s.WidthM = CraftBuilder.DiameterOf(s.Size) + (bestRadial != null ? 2 * CraftBuilder.DiameterOf(SizeOf(bestRadial)) : 0);
+            return true;
+        }
+
+        /// <summary>Legs: one per radial tank (on its outer side) for 3 or 4 of them, one every other tank for 6 or 8, else 4.</summary>
+        static int LegCountFor(int radials)
+        {
+            return radials == 3 || radials == 4 ? radials : radials == 6 || radials == 8 ? radials / 2 : LanderLegs;
+        }
+
+        const double ShieldEntrySpeed = 1500;   // m/s: below that, an entry from low orbit barely heats up
+        const double ChuteAreaPerDrag = 1.07;   // m² of drag area per unit of fullyDeployedDrag (one Mk16 lands a 1.2 t capsule at 6 m/s on Kerbin)
+        const double TouchdownSpeed = 8;        // m/s under the main chutes
+
+        /// <summary>
+        /// Entry into an atmosphere: a heat shield under the lander when the entry is fast (wide enough to cover the radial
+        /// tanks if one is), a ring of main chutes (one per leg position, the type that slows the lander the most for its
+        /// mass) and drogues that open first. The engine finishes the landing when the air is too thin for the chutes.
+        /// </summary>
+        void PlanReentry(StagePlan s, PartInfo legs)
+        {
+            s.Chute = s.Drogue = s.HeatShield = null;
+            s.Chutes = s.Drogues = 0;
+            s.TouchdownSpeed = 0;
+            if (req.LanderPressureAtm <= 0) return;
+
+            if (req.LanderEntrySpeed >= ShieldEntrySpeed)
+            {
+                double core = CraftBuilder.DiameterOf(s.Size);
+                foreach (PartInfo h in req.HeatShields)
+                {
+                    double w = Math.Max(h.DiameterM, CraftBuilder.DiameterOf(SizeOf(h)));
+                    if (w < core - 0.01) continue;
+                    double best = s.HeatShield == null ? 0 : Math.Max(s.HeatShield.DiameterM, CraftBuilder.DiameterOf(SizeOf(s.HeatShield)));
+                    bool covers = w >= s.WidthM - 0.01, bestCovers = s.HeatShield != null && best >= s.WidthM - 0.01;
+                    // The narrowest that covers the whole lander, otherwise the widest.
+                    if (s.HeatShield == null || (covers && (!bestCovers || w < best)) || (!covers && !bestCovers && w > best)) s.HeatShield = h;
+                }
+            }
+
+            int k = s.LegCount > 0 ? s.LegCount : LanderLegs;
+            double mass = (req.PayloadMass + s.DryMass + s.Fuel + s.EngineFuel + s.LegCount * (legs != null ? legs.DryMassT : 0)) * 1000;   // kg
+            double rho = 1.225 * req.LanderPressureAtm;
+            double bestSpeed = double.MaxValue, bestMass = 0;
+            foreach (PartInfo c in req.Parachutes)
+            {
+                if (c.Drogue) continue;
+                double v = Math.Sqrt(2 * mass * req.LanderGravity / (rho * k * c.ChuteDrag * ChuteAreaPerDrag));
+                // Slow enough: the lightest; otherwise the one that slows the most.
+                bool ok = v <= TouchdownSpeed, bestOk = bestSpeed <= TouchdownSpeed;
+                if (s.Chute == null || (ok && (!bestOk || c.DryMassT < bestMass)) || (!ok && !bestOk && v < bestSpeed))
+                { s.Chute = c; bestSpeed = v; bestMass = c.DryMassT; }
+            }
+            if (s.Chute == null) return;
+            s.Chutes = k;
+            s.TouchdownSpeed = bestSpeed;
+            foreach (PartInfo c in req.Parachutes)
+                if (c.Drogue && (s.Drogue == null || c.DryMassT < s.Drogue.DryMassT)) s.Drogue = c;
+            if (s.Drogue != null) s.Drogues = k;
+        }
+
+        /// <summary>TWR at the landing burn's ignition (heat shield gone).</summary>
+        double LanderTwrNow(StagePlan s, PartInfo legs)
+        {
+            double m = req.PayloadMass + s.TotalMass - (s.HeatShield != null ? s.HeatShield.WetMassT : 0) + s.LegCount * (legs != null ? legs.DryMassT : 0);
+            return s.EngineCount * s.Engine.ThrustVacKN / (m * req.LanderGravity);
+        }
+
+        double LanderTankCost(StagePlan s)
+        {
+            double cost = 0;
+            foreach (TankUse t in s.Tanks) cost += t.Count * t.Tank.Cost;
+            if (s.RadialTank != null) cost += s.RadialCount * s.RadialTank.Cost;
+            return cost;
         }
 
         /// <summary>Smallest diameter where the propellant fits in at most two tanks: a squat lander, not a tower.</summary>
@@ -1258,7 +1478,8 @@ namespace LaunchPlanner
 
         double LanderDeltaV(StagePlan s, PartInfo legs)
         {
-            double dry = req.PayloadMass + s.DryMass + LanderLegs * (legs != null ? legs.DryMassT : 0);
+            int count = s.LegCount > 0 ? s.LegCount : LanderLegs;
+            double dry = req.PayloadMass + s.DryMass + count * (legs != null ? legs.DryMassT : 0);
             return s.Engine.IspVac * G0 * Math.Log((dry + s.Fuel + s.EngineFuel) / dry);
         }
 
@@ -1644,7 +1865,8 @@ namespace LaunchPlanner
         {
             StagePlan s = d.Stages[index];
             string above = index + 1 < d.Stages.Count ? d.Stages[index + 1].Size : null;
-            double minD = above != null ? CraftBuilder.DiameterOf(above) : 0;
+            // The top stage is at least as wide as the lander it carries: no wide part on a thin stage.
+            double minD = above != null ? CraftBuilder.DiameterOf(above) : topMinDiameter;
             s.Size = ChooseSize(s.Fuel, s.Mixture, s.Engine, s.EngineCount, minD, double.MaxValue);
 
             double fuel = s.Fuel;
@@ -1807,6 +2029,25 @@ namespace LaunchPlanner
                 length += TanksHeight(u.Tanks) + HeightOf(u.Engine) + (i > 0 ? HeightOf(u.Decoupler) : 0);
                 if (i > index && u.Attitude != null) { mass += u.Attitude.Mass; length += u.Attitude.StackHeight; }
             }
+            return PlanAttitude(s, stack, mass, length);
+        }
+
+        /// <summary>
+        /// The lander steers itself and the payload during the descent and the trip back: RCS between its radial tanks,
+        /// wheels above its central tank when the payload lacks some.
+        /// </summary>
+        AttitudePlan PlanLanderAttitude(StagePlan s, PartInfo legs)
+        {
+            List<PartInfo> stack = new List<PartInfo>();
+            foreach (TankUse t in s.Tanks) for (int n = 0; n < t.Count; n++) stack.Add(t.Tank);
+            if (stack.Count == 0 || (req.ReactionWheels.Count == 0 && req.RcsThrusters.Count == 0)) return null;
+            double mass = req.PayloadMass + s.TotalMass - (s.Attitude != null ? s.Attitude.Mass : 0) + s.LegCount * (legs != null ? legs.DryMassT : 0);
+            double length = req.PayloadHeight + s.HeightM - (s.Attitude != null ? s.Attitude.StackHeight : 0);
+            return PlanAttitude(s, stack, mass, length);
+        }
+
+        AttitudePlan PlanAttitude(StagePlan s, List<PartInfo> stack, double mass, double length)
+        {
             if (length <= 0) length = 10;
             double inertia = mass * length * length / 12;   // t·m²
             // The payload's own wheels help: the stage only adds what is missing.
@@ -1883,6 +2124,12 @@ namespace LaunchPlanner
                     // Between the boosters: 4 when their count allows it (2, 4, 8), otherwise 3 (3, 6).
                     a.RcsPerRing = b.Count == 2 || b.Count % 4 == 0 ? 4 : 3;
                     a.RingAngle = b.Count == 2 ? 45 : 180.0 / b.Count;
+                }
+                else if (s.RadialCount > 0)
+                {
+                    // Lander: between its radial tanks.
+                    a.RcsPerRing = s.RadialCount % 3 == 0 ? 3 : 4;
+                    a.RingAngle = s.RadialCount == 2 ? 45 : 180.0 / s.RadialCount;
                 }
 
                 // Monopropellant: stacked with the wheels, or radial tanks in symmetry. The lightest choice, a missing

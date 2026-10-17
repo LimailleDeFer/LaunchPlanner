@@ -158,6 +158,13 @@ namespace LaunchPlanner
                 req.LanderGravity = budget.LanderGravity;
                 req.LanderBody = budget.LanderBody;
                 req.Legs = LandingLegs.Unlocked();
+                req.LanderPressureAtm = budget.LanderPressureAtm;
+                req.LanderEntrySpeed = budget.LanderEntrySpeed;
+                if (budget.LanderPressureAtm > 0)
+                {
+                    req.Parachutes = LandingLegs.Parachutes();
+                    req.HeatShields = LandingLegs.HeatShields();
+                }
             }
             designsDeltaV = req.TargetDeltaV;
             designsMass = req.PayloadMass;
@@ -317,7 +324,12 @@ namespace LaunchPlanner
                     l.TotalMass + d.LanderLegCount * (d.LanderLegs != null ? d.LanderLegs.DryMassT : 0), l.DeltaV, l.Twr));
                 Label("  Ø " + LauncherDesigner.Diameter(l.Size) + " · " + l.EngineCount + " × " + l.Engine.Title);
                 foreach (TankUse t in l.Tanks) Label("  " + t.Count + " × " + t.Tank.Title);
+                if (l.RadialTank != null) Label("  " + l.RadialCount + " × " + l.RadialTank.Title + " around it");
                 if (d.LanderLegs != null) Label("  " + d.LanderLegCount + " × " + d.LanderLegs.Title);
+                if (l.Attitude != null && l.Attitude.Rcs != null) Label("  " + l.Attitude.Rings * l.Attitude.RcsPerRing + " × " + l.Attitude.Rcs.Title);
+                if (l.HeatShield != null) Label("  1 × " + l.HeatShield.Title);
+                if (l.Drogue != null) Label("  " + l.Drogues + " × " + l.Drogue.Title);
+                if (l.Chute != null) Label(string.Format("  {0} × {1} (≈ {2:0} m/s under them)", l.Chutes, l.Chute.Title, l.TouchdownSpeed));
             }
             if (d.PayloadDecoupler != null) Label("<size=11>" + (d.Lander != null ? "Under the lander" : "Under the payload") +
                 ": 1 × " + d.PayloadDecoupler.Title + "</size>");

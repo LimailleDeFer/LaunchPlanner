@@ -25,6 +25,10 @@ namespace LaunchPlanner
         public double HeightM;        // distance between the top and bottom stack nodes (0 if unknown)
         public double DiameterM;      // actual width of the 3D model (0 if unknown)
         public bool NoseTop;          // the top of the model ends in a point (nose tank, booster with a cap): nothing stacks on top
+        public bool Storage;
+        // Parachutes: drag once fully deployed, and whether it is a drogue (opens high and fast)
+        public double ChuteDrag;
+        public bool Drogue;          // cargo bay or inventory slots (service tanks)
 
         // Multi-couplers (bi, tri, quad): one node on top, several on the bottom
         public int StackOutputs;

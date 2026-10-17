@@ -18,6 +18,11 @@ namespace LaunchPlanner
 
         static readonly HashSet<string> CommandModules = new HashSet<string> { "ModuleCommand" };
 
+        static readonly HashSet<string> StorageModules = new HashSet<string>
+        {
+            "ModuleCargoBay", "ModuleInventoryPart",
+        };
+
         static readonly HashSet<string> DecouplerModules = new HashSet<string>
         {
             "ModuleDecouple", "ModuleAnchoredDecoupler",
@@ -132,6 +137,7 @@ namespace LaunchPlanner
                         HeightM = baseInfo.HeightM,
                         DiameterM = baseInfo.DiameterM,
                         NoseTop = baseInfo.NoseTop,
+                        Storage = baseInfo.Storage,
                         Cost = baseInfo.Cost,
                         Kind = PartKind.Tank,
                         DryMassT = baseInfo.DryMassT + ToDouble(Refl.Call(module, "GetDryMass", subtype)),
@@ -151,7 +157,7 @@ namespace LaunchPlanner
         }
 
         /// <summary>Stack height: gap between the highest and lowest node.</summary>
-        static double StackHeight(Part prefab)
+        internal static double StackHeight(Part prefab)
         {
             double top = double.MinValue, bottom = double.MaxValue;
             int n = 0;
@@ -166,7 +172,7 @@ namespace LaunchPlanner
         }
 
         /// <summary>Width of the 3D model (the profile declared by some mods does not match the real size).</summary>
-        static double ModelWidth(Part prefab)
+        internal static double ModelWidth(Part prefab)
         {
             try
             {
@@ -261,11 +267,12 @@ namespace LaunchPlanner
 
             info.Kind = PartKind.Tank;
             info.NoseTop = PointedTop(prefab);
+            info.Storage = HasModule(prefab, StorageModules);
             return info;
         }
 
         // Disabled model (unchosen variant of a switchable part): the prefab itself is inactive, so we look below it.
-        static bool Hidden(Transform t, Transform root)
+        internal static bool Hidden(Transform t, Transform root)
         {
             for (; t != null && t != root; t = t.parent)
                 if (!t.gameObject.activeSelf) return true;
@@ -386,7 +393,7 @@ namespace LaunchPlanner
             string path = Path.Combine(directory, "inventory.csv");
             CultureInfo ci = CultureInfo.InvariantCulture;
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine("type;name;variant;title;source;sizes;tech;unlocked;cost;dry_mass_t;wet_mass_t;thrust_vac_kN;thrust_asl_kN;isp_vac_s;isp_asl_s;propellants;resources;category;height_m;diameter_m;nose");
+            sb.AppendLine("type;name;variant;title;source;sizes;tech;unlocked;cost;dry_mass_t;wet_mass_t;thrust_vac_kN;thrust_asl_kN;isp_vac_s;isp_asl_s;propellants;resources;category;height_m;diameter_m;nose;storage");
             foreach (PartInfo p in Parts)
             {
                 List<string> res = new List<string>();
@@ -398,6 +405,7 @@ namespace LaunchPlanner
                     p.ThrustVacKN.ToString("0.#", ci), p.ThrustAslKN.ToString("0.#", ci),
                     p.IspVac.ToString("0", ci), p.IspAsl.ToString("0", ci), p.Propellants, string.Join(" ", res.ToArray()), p.Category,
                     p.HeightM.ToString("0.###", ci), p.DiameterM.ToString("0.###", ci), p.NoseTop ? "yes" : "no",
+                    p.Storage ? "yes" : "no",
                 }));
             }
             File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
