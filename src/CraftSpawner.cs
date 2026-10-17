@@ -40,6 +40,13 @@ namespace LaunchPlanner
                     shape.OutputPos.Add(new Vec3(n.position.x, n.position.y, n.position.z));
                 }
                 if (shape.OutputNodes.Count < 2) { shape.OutputNodes.Clear(); shape.OutputPos.Clear(); }
+                // Small radial parts (thrusters, parachutes, legs, monopropellant tanks): their real width, so that the
+                // lander can space them around its tank.
+                if (shape.TopNode == null && part.Kind != PartKind.Decoupler && part.Kind != PartKind.Engine)
+                {
+                    double w = PartInventory.ModelWidth(prefab);
+                    if (w > 0.05) shape.Diameter = w;
+                }
                 shape.TopY = shape.TopNode != null ? top : 0;
                 shape.BottomY = shape.BottomNode != null ? bottom : 0;
                 if (prefab.srfAttachNode != null)

@@ -191,7 +191,7 @@ namespace LaunchPlanner
                 try
                 {
                     Part prefab;
-                    if (!Usable(ap, out prefab) || prefab.srfAttachNode == null) continue;
+                    if (!Usable(ap, out prefab) || !PartInventory.SurfaceMountable(prefab)) continue;
                     if (StackNodes(prefab).Count > 0) continue;
                     ModuleRCS rcs = prefab.FindModuleImplementing<ModuleRCS>();
                     if (rcs == null || rcs.isJustForShow || rcs.thrusterPower <= 0) continue;

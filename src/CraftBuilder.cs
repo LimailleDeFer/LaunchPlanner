@@ -378,6 +378,22 @@ namespace LaunchPlanner
 
         List<CraftPart> Ring(CraftPart host, PartInfo info, int count, double firstAngle, double y)
         {
+            if (slots != null)
+            {
+                // No room at that height: a little higher or lower on the same tank.
+                PartShape sh = shapes.Get(info);
+                double span = Top(host) - Bottom(host), preferred = firstAngle, bestGap = double.MinValue, bestY = y;
+                foreach (double dy in new[] { 0, 0.25, -0.25, 0.4, -0.4 })
+                {
+                    double at = y + dy * span, gap;
+                    if (at > Top(host) - 0.1 * span || at < Bottom(host) + 0.1 * span) continue;
+                    double origin = at - sh.SrfPos.Y;
+                    double angle = FreeAngle(count, preferred, origin + sh.Lowest, origin + Upper(sh), HalfWidth(sh, host.Shape.Diameter / 2), out gap);
+                    if (gap > bestGap + 1e-6) { bestGap = gap; firstAngle = angle; bestY = at; }
+                    if (gap >= 0) break;
+                }
+                y = bestY;
+            }
             List<CraftPart> ring = new List<CraftPart>();
             for (int k = 0; k < count; k++)
             {
@@ -385,7 +401,57 @@ namespace LaunchPlanner
                 Vec3 point = new Vec3(host.Pos.X, y, host.Pos.Z) + outward * (host.Shape.Diameter / 2);
                 ring.Add(SurfaceAt(host, info, point, outward));
             }
+            Occupy(ring);
             return ring;
+        }
+
+        /// <summary>
+        /// Headings taken around the lander's central tank, with the height each part spans: legs, thrusters, monopropellant
+        /// tanks and parachutes all go around the same short tank, so a new ring turns to stay clear of what is already
+        /// there at its height (null outside the lander).
+        /// </summary>
+        List<double[]> slots;
+        Vec3 slotAxis;
+
+        static double Upper(PartShape s) { return s.TopNode != null ? s.TopY : s.Height / 2; }
+
+        /// <summary>Half the angle a part covers around a tank of radius `r`, in degrees.</summary>
+        static double HalfWidth(PartShape s, double r) { return Math.Atan2(s.Diameter / 2, Math.Max(0.1, r)) * 180 / Math.PI; }
+
+        void Occupy(IEnumerable<CraftPart> placed)
+        {
+            if (slots == null) return;
+            foreach (CraftPart c in placed)
+            {
+                Vec3 off = new Vec3(c.Pos.X - slotAxis.X, 0, c.Pos.Z - slotAxis.Z);
+                double r = c.Parent != null && c.Parent.Pos.X == slotAxis.X && c.Parent.Pos.Z == slotAxis.Z ? c.Parent.Shape.Diameter / 2 : off.Length;
+                slots.Add(new[] { off.Heading, c.Pos.Y + c.Shape.Lowest, c.Pos.Y + Upper(c.Shape), HalfWidth(c.Shape, r) });
+            }
+        }
+
+        /// <summary>First heading of a ring of `count` parts spanning [low, high], each `width` degrees on either side of
+        /// its heading: the one that leaves the widest gap to the parts already at that height, the preferred heading
+        /// when it is clear (or as clear as any).</summary>
+        double FreeAngle(int count, double preferred, double low, double high, double width, out double clearance)
+        {
+            double period = 360.0 / Math.Max(1, count), best = preferred, bestGap = double.MinValue;
+            const int steps = 36;
+            for (int i = 0; i < steps; i++)
+            {
+                double first = preferred + period * i / steps, gap = 180;
+                foreach (double[] o in slots)
+                {
+                    if (o[2] < low - 0.1 || o[1] > high + 0.1) continue;
+                    for (int k = 0; k < count; k++)
+                    {
+                        double d = Math.Abs(((first + period * k - o[0]) % 360 + 540) % 360 - 180);
+                        gap = Math.Min(gap, d - width - o[3]);
+                    }
+                }
+                if (gap > bestGap + 1) { bestGap = gap; best = first; }
+            }
+            clearance = bestGap;
+            return best;
         }
 
         CraftPart landerTank, landerEngine;
@@ -411,6 +477,8 @@ namespace LaunchPlanner
                     cores.Add(cursor);
                 }
             List<CraftPart> engines = AddEngines(cursor, s, s.EngineCount, actions - 1);
+            slots = new List<double[]>();
+            slotAxis = cursor.Pos;
             landerTank = cursor;
             landerEngine = engines.Count == 1 && engines[0].Attach == AttachKind.Stack ? engines[0] : null;
             double bottom = Bottom(cursor);
@@ -431,6 +499,7 @@ namespace LaunchPlanner
                 radials.Add(r);
             }
             SetSymmetry(radials);
+            Occupy(radials);
             if (radials.Count > 0)
             {
                 Notes.Add(string.Format("Lander: {0} × {1} around its central tank; they feed the engine through it.", radials.Count, s.RadialTank.Title));
@@ -441,6 +510,7 @@ namespace LaunchPlanner
             else Notes.Add("No landing legs unlocked: the lander will land on its nozzle.");
             if (att != null) AddRcs(cores, att, "Lander");
             if (s.Chute != null) AddChutes(d, cores, radials);
+            slots = null;
             return cursor;
         }
 
@@ -530,6 +600,7 @@ namespace LaunchPlanner
             }
             SetSymmetry(onRadials);
             SetSymmetry(onCore);
+            Occupy(onRadials.Concat(onCore));
             // Deployed, the feet must reach below the engine.
             double reach = d.LanderLegs.LegDeployedM;
             bool short_ = false;

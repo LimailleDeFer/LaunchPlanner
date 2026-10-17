@@ -12,7 +12,7 @@ namespace LaunchPlanner
             foreach (AvailablePart ap in Usable())
             {
                 Part prefab = ap.partPrefab;
-                if (prefab.srfAttachNode == null) continue;
+                if (!PartInventory.SurfaceMountable(prefab)) continue;
                 ModuleWheelBase wheel = prefab.FindModuleImplementing<ModuleWheelBase>();
                 if (wheel == null || wheel.wheelType != WheelType.LEG) continue;
                 PartInfo leg = Info(ap);
@@ -32,7 +32,7 @@ namespace LaunchPlanner
             foreach (AvailablePart ap in Usable())
             {
                 Part prefab = ap.partPrefab;
-                if (prefab.srfAttachNode == null || !(Refl.Str(ap, "bulkheadProfiles") ?? "").Contains("srf")) continue;
+                if (!PartInventory.SurfaceMountable(prefab) || !(Refl.Str(ap, "bulkheadProfiles") ?? "").Contains("srf")) continue;
                 ModuleParachute chute = prefab.FindModuleImplementing<ModuleParachute>();
                 if (chute == null) continue;
                 PartInfo p = Info(ap);

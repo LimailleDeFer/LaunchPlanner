@@ -271,6 +271,15 @@ namespace LaunchPlanner
             return info;
         }
 
+        /// <summary>
+        /// The part can go on a surface. KSP gives every part a surface node, even one that only stacks (Glenn legs,
+        /// pod parachutes): the attach rules say whether the editor allows it.
+        /// </summary>
+        internal static bool SurfaceMountable(Part prefab)
+        {
+            return prefab.srfAttachNode != null && prefab.attachRules != null && prefab.attachRules.srfAttach;
+        }
+
         // Disabled model (unchosen variant of a switchable part): the prefab itself is inactive, so we look below it.
         internal static bool Hidden(Transform t, Transform root)
         {

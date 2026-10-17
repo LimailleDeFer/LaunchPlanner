@@ -263,6 +263,21 @@ static class LauncherDesignerTest
             if (foot < bottom - 0.01) { Console.WriteLine("   ERROR: folded leg foot at {0:0.00}, engine bottom {1:0.00}", foot, bottom); errors++; }
             if (reach < coreR - 0.01) { Console.WriteLine("   ERROR: leg inside the central tank"); errors++; }
         }
+        // Parts around the central tank: no two at the same heading and height (legs, thrusters, tanks, parachutes).
+        List<CraftPart> around = craft.FindAll(p => p.Attach == AttachKind.Surface && p.Parent != null && p.Parent.Info.Kind == PartKind.Tank
+            && p.Parent.Attach != AttachKind.Surface && p.Info != d.Lander.RadialTank && p.Parent.Pos.Y > bottom);
+        foreach (CraftPart p in around)
+            foreach (CraftPart q in around)
+            {
+                if (q.Id <= p.Id || p.Parent.Pos.X != q.Parent.Pos.X || p.Parent.Pos.Z != q.Parent.Pos.Z) continue;
+                Vec3 axis = p.Parent.Pos;
+                double hp = new Vec3(p.Pos.X - axis.X, 0, p.Pos.Z - axis.Z).Heading, hq = new Vec3(q.Pos.X - axis.X, 0, q.Pos.Z - axis.Z).Heading;
+                double gap = Math.Abs(((hp - hq) % 360 + 540) % 360 - 180);
+                double pl = p.Pos.Y + p.Shape.Lowest, ph = p.Pos.Y + p.Shape.Diameter / 2, ql = q.Pos.Y + q.Shape.Lowest, qh = q.Pos.Y + q.Shape.Diameter / 2;
+                double r = p.Parent.Shape.Diameter / 2, need = (Math.Atan2(p.Shape.Diameter / 2, r) + Math.Atan2(q.Shape.Diameter / 2, r)) * 180 / Math.PI;
+                if (gap < need - 1 && pl < qh && ql < ph)
+                { Console.WriteLine("   ERROR: {0} and {1} at the same place (heading {2:0}/{3:0})", p.Info.Title, q.Info.Title, hp, hq); errors++; }
+            }
         foreach (CraftPart p in craft)
             if (p.Info.ChuteDrag > 0 || p.Info.Name.StartsWith("HeatShield") || p.Info == d.Lander.Engine && p.Activation >= 0 && last.Children.Contains(p))
                 Console.WriteLine("   lander part {0} at y {1:0.00}, heading {2:0}, activation {3}", p.Info.Title, p.Pos.Y, new Vec3(p.Pos.X, 0, p.Pos.Z).Heading, p.Activation);
@@ -303,6 +318,7 @@ class FakeShapes : IPartShapes
         if (p.Name.StartsWith("fakeCone")) h = d;
         if (p.StackOutputs > 0 || p.TorqueKNm > 0) h = p.HeightM;
         if (p.RcsThrustKN > 0) { d = 0.3; h = 0.3; }
+        if (p.ChuteDrag > 0 || (p.Sizes ?? "").Trim() == "srf") { d = 0.4; h = 0.5; }
         PartShape s = new PartShape { Diameter = d, TopNode = "top", BottomNode = "bottom", TopY = h / 2, BottomY = -h / 2 };
         if (p.Name.StartsWith("fakeCone")) { s.TopNode = "bottom"; s.BottomNode = null; s.TopY = -h / 2; }
         for (int i = 0; i < p.StackOutputs; i++)
