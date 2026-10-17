@@ -314,8 +314,10 @@ namespace LaunchPlanner
             Label(string.Format("Liftoff mass <b>{0:0.0} t</b> (launcher {1:0.0} t)", d.TotalMass, d.LauncherMass));
             Label(string.Format("Cost <b>{0}</b> · Liftoff TWR <b>{1:0.00}</b>", Money(d.Cost), d.LiftoffTwr));
             Label(string.Format(CultureInfo.InvariantCulture, "Height ≈ <b>{0:0.#} m</b> · width ≈ {1:0.#} m · {2} parts (payload included)", d.HeightM, d.WidthM, d.PartCount));
-            string dvColor = d.DeltaV >= designsDeltaV - 1 ? "#66ff66" : "#ff6666";
+            string dvColor = d.DeltaV - d.ClimbLoss >= designsDeltaV - 1 ? "#66ff66" : "#ff6666";
             Label(string.Format("Δv <color={0}><b>{1:0} m/s</b></color> for {2:0} required", dvColor, d.DeltaV, designsDeltaV));
+            if (d.ClimbLoss >= 1)
+                Label(string.Format("of which ≈ {0:0} m/s lost to a slow climb (TWR under {1:0.0} during the ascent)", d.ClimbLoss, LauncherDesigner.BriskClimbTwr));
 
             if (d.Lander != null)
             {

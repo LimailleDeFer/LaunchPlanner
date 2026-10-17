@@ -168,7 +168,7 @@ static class LauncherDesignerTest
             Console.WriteLine();
             Console.WriteLine("== " + d.Variant + (d.Valid ? "" : " — " + d.Problem));
             if (d.Stages.Count == 0) continue;
-            Console.WriteLine("   mass {0:0.0} t, cost {1:0}, Δv {2:0} m/s, liftoff TWR {3:0.00}", d.TotalMass, d.Cost, d.DeltaV, d.LiftoffTwr);
+            Console.WriteLine("   mass {0:0.0} t, cost {1:0}, Δv {2:0} m/s (climb loss {4:0}), liftoff TWR {3:0.00}", d.TotalMass, d.Cost, d.DeltaV, d.LiftoffTwr, d.ClimbLoss);
             Console.WriteLine("   height {0:0.0} m, width {1:0.0} m, {2} parts", d.HeightM, d.WidthM, d.PartCount);
             if (d.Lander != null)
                 Console.WriteLine("   Lander (Ø {0}): {1} × {2}; {3}; {4} × {5}; Δv {6:0}, TWR {7:0.00}, {8:0.0} t",

@@ -164,6 +164,7 @@ namespace LaunchPlanner
         public double LauncherMass;
         public double Cost;
         public double DeltaV;
+        public double ClimbLoss;        // delta-v lost to a sluggish climb, beyond what the ascent budget allows for
         public double LiftoffTwr;
         public List<string> Notes = new List<string>();
         public PartInfo PayloadDecoupler;   // decoupler between the payload and the last stage
@@ -717,7 +718,7 @@ namespace LaunchPlanner
         {
             double airDv = Math.Max(1, req.AscentDeltaV * 0.5);
             double dv = 0;
-            const int Steps = 60;
+            const int Steps = 24;
             double step = (mass - end) / Steps;
             for (int k = 0; k < Steps; k++)
             {
@@ -740,7 +741,7 @@ namespace LaunchPlanner
             foreach (StagePlan s in d.Stages) mass += s.TotalMass;
             d.TotalMass = mass;
             d.LauncherMass = mass - req.PayloadMass;
-            double total = 0;
+            double total = 0, loss = 0;
 
             for (int i = 0; i < d.Stages.Count; i++)
             {
@@ -771,7 +772,9 @@ namespace LaunchPlanner
                         {
                             double pairFuel = 2 * b.FuelEach;
                             double m1 = mass - pairFuel;
-                            dv += (thrC + active * thrB) / (mdotC + active * mdotB) * Math.Log(mass / m1);
+                            double seg = (thrC + active * thrB) / (mdotC + active * mdotB) * Math.Log(mass / m1);
+                            loss += ClimbLoss(thrC + active * thrB, mass, m1, total + dv, seg);
+                            dv += seg;
                             mass = m1 - 2 * b.DryEach;
                         }
                     }
@@ -784,9 +787,13 @@ namespace LaunchPlanner
                             // The core shuts down first: the boosters finish alone, then the whole stage is dropped.
                             double tC = coreFuel / mdotC;
                             double m1 = mass - (mdotC + b.Count * mdotB) * tC;
-                            dv += (thrC + b.Count * thrB) / (mdotC + b.Count * mdotB) * Math.Log(mass / m1);
+                            double seg = (thrC + b.Count * thrB) / (mdotC + b.Count * mdotB) * Math.Log(mass / m1);
+                            loss += ClimbLoss(thrC + b.Count * thrB, mass, m1, total + dv, seg);
+                            dv += seg;
                             double m2 = m1 - b.Count * (b.FuelEach - mdotB * tC);
-                            dv += thrB / mdotB * Math.Log(m1 / m2);
+                            seg = thrB / mdotB * Math.Log(m1 / m2);
+                            loss += ClimbLoss(b.Count * thrB, m1, m2, total + dv, seg);
+                            dv += seg;
                             double boosterThrust = b.Count * k * (atmo ? (b.Part.ThrustAslKN + b.Part.ThrustVacKN) / 2 : b.Part.ThrustVacKN);
                             s.DeltaV = dv;
                             s.CoreTwr = boosterThrust / (m1 * req.HomeGravity);
@@ -796,7 +803,9 @@ namespace LaunchPlanner
                             continue;
                         }
                         double m1b = mass - (mdotC + b.Count * mdotB) * tB;
-                        dv += (thrC + b.Count * thrB) / (mdotC + b.Count * mdotB) * Math.Log(mass / m1b);
+                        double segB = (thrC + b.Count * thrB) / (mdotC + b.Count * mdotB) * Math.Log(mass / m1b);
+                        loss += ClimbLoss(thrC + b.Count * thrB, mass, m1b, total + dv, segB);
+                        dv += segB;
                         coreFuel -= mdotC * tB;
                         mass = m1b - b.Count * b.DryEach;
                     }
@@ -808,7 +817,9 @@ namespace LaunchPlanner
 
                 double end = mass - coreFuel;
                 if (end <= 0) return -1;
-                dv += atmo ? AscentBurn(s.Engine, mass, end, total + dv) : thrC / mdotC * Math.Log(mass / end);
+                double last = atmo ? AscentBurn(s.Engine, mass, end, total + dv) : thrC / mdotC * Math.Log(mass / end);
+                loss += ClimbLoss(thrC, mass, end, total + dv, last);
+                dv += last;
                 mass = end - s.DryMass;
 
                 s.Twr = liftThrust / (s.MassStart * req.HomeGravity);
@@ -817,9 +828,44 @@ namespace LaunchPlanner
             }
 
             d.DeltaV = total;
+            if (!chargeClimb) loss = 0;
+            d.ClimbLoss = loss;
             d.LiftoffTwr = d.Stages.Count > 0 ? d.Stages[0].Twr : 0;
             d.Cost = CostOf(d);
-            return total;
+            // What counts toward the target: a launcher that crawls out of the atmosphere burns its delta-v holding itself up.
+            return total - loss;
+        }
+
+        // The ascent budget assumes a brisk climb; below this TWR, a stage still climbing pays extra gravity losses.
+        public const double BriskClimbTwr = 1.5;
+        // Off while sizing a bare core that boosters will help lift: its own sluggishness says nothing yet.
+        bool chargeClimb = true;
+
+        /// <summary>
+        /// Gravity losses of a burn during the ascent beyond those of a brisk climb. The path tilts from vertical
+        /// (gravity fully against the thrust) to horizontal at orbital speed; holding up against it costs g·sin(γ)
+        /// per second, i.e. sin(γ)/TWR per m/s gained. Only the part slower than a brisk climb is charged: a fast stage
+        /// earns no credit (it pays in drag what it saves in gravity).
+        /// </summary>
+        double ClimbLoss(double thrustKN, double m0, double m1, double startDeltaV, double segmentDv)
+        {
+            double ascent = req.AscentDeltaV;
+            if (ascent <= 0 || startDeltaV >= ascent || segmentDv <= 0 || m1 <= 0 || m0 <= m1 || thrustKN <= 0) return 0;
+            // The TWR only rises as propellant burns: brisk from the start, brisk throughout.
+            if (thrustKN / (m0 * req.HomeGravity) >= BriskClimbTwr) return 0;
+            const int Steps = 16;
+            double lnTotal = Math.Log(m0 / m1), step = (m0 - m1) / Steps, done = 0, loss = 0;
+            for (int k = 0; k < Steps; k++)
+            {
+                double ma = m0 - k * step, mb = ma - step;
+                double piece = segmentDv * Math.Log(ma / mb) / lnTotal;
+                double x = (startDeltaV + done + piece / 2) / ascent;
+                done += piece;
+                if (x >= 1) break;
+                double twr = thrustKN / ((ma + mb) / 2 * req.HomeGravity);
+                loss += (1 - x) * Math.Max(0, 1 / twr - 1 / BriskClimbTwr) * piece;
+            }
+            return loss;
         }
 
         double CostOf(LauncherDesign d)
@@ -987,14 +1033,29 @@ namespace LaunchPlanner
         bool SolveFirstStage(LauncherDesign d, bool checkTwr = true)
         {
             StagePlan s = d.Stages[0];
+            chargeClimb = checkTwr;
+            try { return SolveFirstStageCharged(d, checkTwr); }
+            finally { chargeClimb = true; }
+        }
+
+        bool SolveFirstStageCharged(LauncherDesign d, bool checkTwr)
+        {
+            StagePlan s = d.Stages[0];
             // Liftoff TWR drops as propellant is added: if it is already too low when empty, there is no point searching.
             SetFuel(s, 0.001);
             Simulate(d);
             if (checkTwr && s.Twr < req.MinLiftoffTwr) return false;
 
-            double lo = 0, hi = 4000;
-            SetFuel(s, hi);
-            if (Simulate(d) < req.TargetDeltaV) return false;
+            // More propellant first adds delta-v, then the climb slows down and the losses take over:
+            // the smallest quantity that reaches the target is searched upward, then refined.
+            double lo = 0, hi = -1;
+            for (double f = 0.5; f <= 4000; f *= 1.5)
+            {
+                SetFuel(s, f);
+                if (Simulate(d) >= req.TargetDeltaV) { hi = f; break; }
+                lo = f;
+            }
+            if (hi < 0) return false;
             while (hi - lo > Math.Max(0.02, hi * 0.002))
             {
                 double mid = (lo + hi) / 2;
@@ -1014,6 +1075,7 @@ namespace LaunchPlanner
             public double Fuel;
             public double Mass;
             public double DeltaV;
+            public double Twr;
         }
 
         // Possible upper stages (delta-v, mass); only the non-dominated ones are kept.
@@ -1040,20 +1102,28 @@ namespace LaunchPlanner
                         double dv = e.IspVac * G0 * Math.Log(m0 / m1);
                         if (dv > req.TargetDeltaV * 0.9) break;
                         if (n * e.ThrustVacKN / (m0 * req.HomeGravity) < req.MinUpperTwr) break;
-                        all.Add(new Upper { Engine = e, Count = n, Fuel = fuel, Mass = m0, DeltaV = dv });
+                        all.Add(new Upper { Engine = e, Count = n, Fuel = fuel, Mass = m0, DeltaV = dv,
+                            Twr = n * e.ThrustVacKN / (m0 * req.HomeGravity) });
                     }
 
+            // Non-dominated in mass, delta-v and thrust: a heavier but punchier stage stays in the running,
+            // since a sluggish one loses delta-v holding itself up during the climb (see ClimbLoss).
             all.Sort((a, b) => a.Mass.CompareTo(b.Mass));
             List<Upper> front = new List<Upper>();
-            double bestDv = -1;
             foreach (Upper u in all)
-                if (u.DeltaV > bestDv + 25) { front.Add(u); bestDv = u.DeltaV; }
+            {
+                bool dominated = false;
+                foreach (Upper f in front)
+                    if (f.DeltaV > u.DeltaV - 25 && f.Twr > u.Twr * 0.95) { dominated = true; break; }
+                if (!dominated) front.Add(u);
+            }
 
             // To keep computation time reasonable, the front is sampled.
-            if (front.Count > 24)
+            const int Kept = 36;
+            if (front.Count > Kept)
             {
                 List<Upper> sample = new List<Upper>();
-                for (int i = 0; i < 24; i++) sample.Add(front[i * (front.Count - 1) / 23]);
+                for (int i = 0; i < Kept; i++) sample.Add(front[i * (front.Count - 1) / (Kept - 1)]);
                 front = sample;
             }
             return front;
@@ -1812,7 +1882,11 @@ namespace LaunchPlanner
             twrMargin = 1;
             string problem = ConstraintProblem(d);
             twrMargin = 1.04;
-            if (d.DeltaV < req.TargetDeltaV - 1) problem = string.Format("insufficient Δv once the tanks are rounded ({0:0} m/s)", d.DeltaV);
+            if (d.DeltaV - d.ClimbLoss < req.TargetDeltaV - 1) problem = string.Format("insufficient Δv once the tanks are rounded ({0:0} m/s)", d.DeltaV - d.ClimbLoss);
+            BoosterPlan lb = first.Boosters;
+            if (problem == null && lb != null && lb.Count > 0 && !lb.Solid && !lb.Crossfeed &&
+                lb.Fuel / Math.Max(1e-9, lb.EnginesEach * MassFlow(lb.Part)) > (first.Fuel + first.EngineFuel) / Math.Max(1e-9, first.EngineCount * MassFlow(first.Engine)))
+                problem = "boosters outlast the core (their smallest tanks hold too much)";
             if (problem == null) problem = SiteProblem(d);
             // Like real launchers, the boosters are shorter than the core (Sebastien's rule).
             if (problem == null && d.BoosterExcessM > 0.1)
