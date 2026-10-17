@@ -1300,6 +1300,7 @@ namespace LaunchPlanner
         const double LanderAspectWeight = 0.4;   // score penalty per unit of height / width
         const double LanderPartWeight = 0.02;    // per radial tank
         const double StorageBonus = 0.9;         // central tank with a cargo bay or inventory slots
+        const double LegHangWeight = 1;          // folded legs hanging below the tanks, as a share of their length
 
         /// <summary>Narrowest central tank: wide enough for the engines and for the payload's bottom.</summary>
         double LanderMinDiameter(StagePlan s)
@@ -1331,6 +1332,7 @@ namespace LaunchPlanner
             double bestScore = double.MaxValue;
             PartInfo bestCore = null, bestRadial = null;
             int bestCores = 0, bestCount = 0;
+            bool bestFits = false;
             foreach (PartInfo core in mix.Tanks)
             {
                 double D = CraftBuilder.DiameterOf(SizeOf(core));
@@ -1364,11 +1366,19 @@ namespace LaunchPlanner
                             double cost = s.EngineCount * s.Engine.Cost + cores * core.Cost + (r != null ? n * r.Cost : 0);
                             double height = Math.Max(coreH, r != null ? HeightOf(r) : 0) + engineH + attitude;
                             double width = D + 2 * dr;
+                            // Folded legs that would hang below the tanks (along the engine and the interstage) count against the layout.
+                            double fold = legs != null ? legs.LegFoldedM : 0;
+                            double room = (r != null && n % legCount == 0 ? HeightOf(r) : coreH) - 0.1;
+                            double hang = fold > 0 && room < fold ? (fold - room) / fold : 0;
+                            // A layout where the folded legs fit along the tanks always wins over one where they hang.
+                            if (hang > 0 && bestFits) continue;
+                            if (hang == 0 && !bestFits) bestScore = double.MaxValue;
                             double score = (req.MinimizeCost ? cost : m0) * (1 + LanderAspectWeight * height / width)
-                                * (1 + LanderPartWeight * n) * (core.Storage ? StorageBonus : 1);
+                                * (1 + LanderPartWeight * n) * (core.Storage ? StorageBonus : 1) * (1 + LegHangWeight * hang);
                             if (score >= bestScore) continue;
                             bestScore = score;
                             bestCore = core; bestCores = cores; bestRadial = r; bestCount = n;
+                            bestFits = hang == 0;
                             break;
                         }
                     }

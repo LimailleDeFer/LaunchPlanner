@@ -57,6 +57,8 @@ namespace LaunchPlanner
                     if (d.sqrMagnitude > 0.01f) shape.ExhaustDir = new Vec3(d.x, d.y, d.z);
                 }
                 shape.MinY = LowestPoint(prefab);
+                // Landing legs: their folded foot, measured on the drag cubes (the meshes may be in the deployed pose).
+                if (part.LegFoldedM > 0) shape.MinY = shape.SrfPos.Y - part.LegFoldedM;
                 foreach (PartModule m in prefab.Modules)
                 {
                     shape.Modules.Add(m.moduleName);

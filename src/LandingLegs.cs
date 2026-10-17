@@ -15,7 +15,9 @@ namespace LaunchPlanner
                 if (prefab.srfAttachNode == null) continue;
                 ModuleWheelBase wheel = prefab.FindModuleImplementing<ModuleWheelBase>();
                 if (wheel == null || wheel.wheelType != WheelType.LEG) continue;
-                legs.Add(Info(ap));
+                PartInfo leg = Info(ap);
+                MeasureLeg(prefab, leg);
+                legs.Add(leg);
             }
             return legs;
         }
@@ -68,6 +70,32 @@ namespace LaunchPlanner
                 shields.Add(p);
             }
             return shields;
+        }
+
+        /// <summary>
+        /// Reach of the leg below its attach point, folded and deployed, from the game's drag cubes (one box per state,
+        /// in the part's frame): more reliable than the meshes, which are modelled in one pose only.
+        /// </summary>
+        static void MeasureLeg(Part prefab, PartInfo leg)
+        {
+            try
+            {
+                if (prefab.DragCubes == null || prefab.DragCubes.Cubes == null) return;
+                double attach = prefab.srfAttachNode.position.y;
+                DragCube folded = null, deployed = null;
+                foreach (DragCube c in prefab.DragCubes.Cubes)
+                {
+                    if (c == null) continue;
+                    string n = (c.Name ?? "").ToLowerInvariant();
+                    if (n.Contains("retract") || n.Contains("stow") || n.Contains("fold")) folded = c;
+                    else if (n.Contains("deploy") || n.Contains("extend")) deployed = c;
+                }
+                if (folded != null) leg.LegFoldedM = Math.Max(0, attach - (folded.Center.y - folded.Size.y / 2));
+                if (deployed != null) leg.LegDeployedM = Math.Max(0, attach - (deployed.Center.y - deployed.Size.y / 2));
+                UnityEngine.Debug.Log(string.Format("[LaunchPlanner] leg {0}: folded {1:0.00} m, deployed {2:0.00} m below the attach point",
+                    leg.Name, leg.LegFoldedM, leg.LegDeployedM));
+            }
+            catch (Exception) { }
         }
 
         static IEnumerable<AvailablePart> Usable()

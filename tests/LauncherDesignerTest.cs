@@ -102,9 +102,10 @@ static class LauncherDesignerTest
         {
             string[] l = lander.Split(',');
             req.LanderDeltaV = D(l[0]); req.LanderGravity = D(l[1]); req.LanderBody = "test";
-            req.Legs.Add(new PartInfo { Name = "miniLandingLeg", Title = "LT-05", DryMassT = 0.015, Unlocked = true, Cost = 340 });
-            req.Legs.Add(new PartInfo { Name = "landingLeg1", Title = "LT-1", DryMassT = 0.05, Unlocked = true, Cost = 440 });
-            req.Legs.Add(new PartInfo { Name = "landingLeg1-2", Title = "LT-2", DryMassT = 0.1, Unlocked = true, Cost = 640 });
+            // Folded and deployed reach as the game's drag cubes give them (LT-1 read in PartDatabase.cfg, the others estimated)
+            req.Legs.Add(new PartInfo { Name = "miniLandingLeg", Title = "LT-05", DryMassT = 0.015, Unlocked = true, Cost = 340, LegFoldedM = 0.6, LegDeployedM = 1.1 });
+            req.Legs.Add(new PartInfo { Name = "landingLeg1", Title = "LT-1", DryMassT = 0.05, Unlocked = true, Cost = 440, LegFoldedM = 1.0, LegDeployedM = 1.98 });
+            req.Legs.Add(new PartInfo { Name = "landingLeg1-2", Title = "LT-2", DryMassT = 0.1, Unlocked = true, Cost = 640, LegFoldedM = 1.4, LegDeployedM = 2.6 });
         }
         // ATMO=pressure (atm),entry speed (m/s): the destination has an atmosphere; stock-like chutes and shields
         string atmo = Environment.GetEnvironmentVariable("ATMO");
@@ -258,6 +259,9 @@ static class LauncherDesignerTest
         foreach (CraftPart p in craft)
             if (p.Info.ChuteDrag > 0 || p.Info.Name.StartsWith("HeatShield") || p.Info == d.Lander.Engine && p.Activation >= 0 && last.Children.Contains(p))
                 Console.WriteLine("   lander part {0} at y {1:0.00}, heading {2:0}, activation {3}", p.Info.Title, p.Pos.Y, new Vec3(p.Pos.X, 0, p.Pos.Z).Heading, p.Activation);
+        double tanksBottom = core.Pos.Y + core.Shape.BottomY;
+        foreach (CraftPart l in legs)
+            if (l.Pos.Y + l.Shape.MinY < tanksBottom - 0.01) { Console.WriteLine("   note: folded foot {0:0.00} below the tanks' bottom {1:0.00}", l.Pos.Y + l.Shape.MinY, tanksBottom); break; }
         Console.WriteLine("   lander geometry: core Ø {0:0.##}, {1} radial tanks, {2} legs, engine bottom {3:0.00}, lowest folded foot {4:0.00}",
             core.Shape.Diameter, radials.Count, legs.Count, bottom, legs.Count > 0 ? legs.ConvertAll(l => l.Pos.Y + l.Shape.MinY).Min() : 0);
         return errors;
@@ -304,7 +308,7 @@ class FakeShapes : IPartShapes
         // Landing legs, like the stock LT-1: attached high on their bracket, the folded foot about a metre below.
         if (p.Name.ToLower().Contains("landingleg"))
         {
-            s = new PartShape { Diameter = 0.4, SrfPos = new Vec3(0, 0.2, 0), SrfDir = new Vec3(0, 0, 1), MinY = -0.9 };
+            s = new PartShape { Diameter = 0.4, SrfPos = new Vec3(0, 0.2, 0), SrfDir = new Vec3(0, 0, 1), MinY = 0.2 - p.LegFoldedM };
         }
         // Engines: the nozzle ends a little below the bottom node.
         if (p.Kind == PartKind.Engine) s.MinY = -h / 2 - 0.1;

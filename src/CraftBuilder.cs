@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace LaunchPlanner
 {
@@ -501,25 +502,41 @@ namespace LaunchPlanner
             PartShape ls = shapes.Get(d.LanderLegs);
             bool known = !double.IsNaN(ls.MinY);
             double drop = known ? ls.SrfPos.Y - ls.MinY : 0;   // from the attach point down to the folded foot
+            // Folded feet above the bottom of the tanks if they fit (clear of the engine and of an interstage around it),
+            // otherwise above the bottom of the engine, otherwise as high as possible.
+            double tanks = Bottom(cores[cores.Count - 1]);
+            foreach (CraftPart r in radials) tanks = Math.Min(tanks, Bottom(r));
             bool tooLow = false;
             List<CraftPart> onRadials = new List<CraftPart>(), onCore = new List<CraftPart>();
             foreach (KeyValuePair<CraftPart, double> m in mounts)
             {
-                CraftPart host = m.Key;
-                double span = Top(host) - Bottom(host);
-                double y = Bottom(host) + Math.Min(0.4, 0.25 * span);
-                if (known && y - drop < bottom + 0.05)
+                bool radial = radials.Contains(m.Key);
+                double low = radial ? Bottom(m.Key) : Bottom(cores[cores.Count - 1]);
+                double high = radial ? Top(m.Key) : Top(cores[0]);
+                double span = high - low;
+                double highest = high - Math.Min(0.2, 0.1 * span);
+                double y = low + Math.Min(0.4, 0.25 * span);
+                if (known)
                 {
-                    y = bottom + 0.05 + drop;
-                    double highest = Top(host) - Math.Min(0.2, 0.1 * span);
-                    if (y > highest) { y = highest; tooLow = true; }
+                    double wanted = Math.Max(y, tanks + 0.05 + drop);
+                    if (wanted > highest) wanted = Math.Max(y, bottom + 0.05 + drop);
+                    if (wanted > highest) { wanted = highest; tooLow = true; }
+                    y = wanted;
                 }
+                CraftPart host = radial ? m.Key : cores.Find(c => y <= Top(c) + 1e-6 && y >= Bottom(c) - 1e-6) ?? cores[cores.Count - 1];
                 Vec3 outward = new Vec3(0, 0, 1).Yaw(m.Value);
                 Vec3 point = new Vec3(host.Pos.X, y, host.Pos.Z) + outward * (host.Shape.Diameter / 2);
-                (radials.Contains(host) ? onRadials : onCore).Add(SurfaceAt(host, d.LanderLegs, point, outward));
+                (radial ? onRadials : onCore).Add(SurfaceAt(host, d.LanderLegs, point, outward));
             }
             SetSymmetry(onRadials);
             SetSymmetry(onCore);
+            // Deployed, the feet must reach below the engine.
+            double reach = d.LanderLegs.LegDeployedM;
+            bool short_ = false;
+            if (reach > 0)
+                foreach (CraftPart l in onRadials.Concat(onCore))
+                    if (l.Pos.Y + ls.SrfPos.Y - reach > bottom - 0.05) short_ = true;
+            if (short_) Notes.Add(string.Format("Lander: deployed, the {0} do not reach below the engine: it will touch the ground first.", d.LanderLegs.Title));
             string where = onRadials.Count > 0 ? "on the radial tanks" : "on the central tank";
             if (!known)
                 Notes.Add(string.Format("Lander: {0} × {1} {2} (press G to deploy them). Check in the editor that they extend lower than the nozzle.",
