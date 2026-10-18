@@ -841,7 +841,7 @@ namespace LaunchPlanner
         public const double BriskClimbTwr = 1.5;
         public const double PowerfulClimbTwr = 2.6;     // "powerful" option: the climb the budget is measured against
         const double PowerfulAscentTwr = 1.6;           // "powerful" option: least TWR of a stage lit mid-ascent
-        public const double PowerfulUpperTwr = 1.0;     // "powerful" option: least TWR of a stage lit in orbit
+        public const double PowerfulUpperTwr = 1.2;     // "powerful" option: least TWR of a stage lit in orbit
         const double BriskLanderTwr = 3, PowerfulLanderTwr = 5;
         double BriskTwr { get { return req.Powerful ? PowerfulClimbTwr : BriskClimbTwr; } }
         double AscentTwr { get { return Math.Max(req.Powerful ? PowerfulAscentTwr : 0.9, req.MinUpperTwr); } }
@@ -962,9 +962,13 @@ namespace LaunchPlanner
         /// </summary>
         double MinTwr(double startDeltaV)
         {
-            // From 0.9 mid-ascent down to the chosen minimum once orbital speed is reached, with no step.
-            double x = (startDeltaV / req.AscentDeltaV - 0.5) / 0.5;
-            if (!req.HomeAtmosphere) x = startDeltaV / (req.AscentDeltaV * 0.5);
+            // Paper delta-v overstates the real progress (drag, steering, a heavy stack): a stage lit at the ascent
+            // budget is often still suborbital. "Powerful": full climbing thrust until well past it, no relaxing.
+            double ascent = req.AscentDeltaV;
+            if (req.Powerful) return startDeltaV < 1.3 * ascent ? AscentTwr : req.MinUpperTwr;
+            // From 0.9 mid-ascent down to the chosen minimum once orbital speed is surely reached, with no step.
+            double x = (startDeltaV / ascent - 0.8) / 0.4;
+            if (!req.HomeAtmosphere) x = startDeltaV / (ascent * 0.5);
             x = Math.Max(0, Math.Min(1, x));
             double high = AscentTwr;
             return high + (req.MinUpperTwr - high) * x;
