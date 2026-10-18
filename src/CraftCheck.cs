@@ -11,7 +11,8 @@ namespace LaunchPlanner
     /// </summary>
     public static class CraftCheck
     {
-        const float Tolerance = 0.08f;   // m: parts that merely touch, or a collider a little larger than its model
+        const float Tolerance = 0.08f;           // m: parts that merely touch, or a collider a little larger than its model
+        const float AttachedTolerance = 0.3f;    // m: a part and the one it is attached to
 
         public static List<string> Overlaps(List<Part> parts, HashSet<uint> launcher)
         {
@@ -19,7 +20,8 @@ namespace LaunchPlanner
             List<KeyValuePair<Part, Collider[]>> shapes = new List<KeyValuePair<Part, Collider[]>>();
             foreach (Part p in parts)
             {
-                if (p == null) continue;
+                // Fuel lines and struts run from one part into another by design.
+                if (p == null || p is CompoundPart) continue;
                 List<Collider> usable = new List<Collider>();
                 foreach (Collider c in p.GetComponentsInChildren<Collider>(false))
                     if (c != null && c.enabled && !c.isTrigger && c.gameObject.activeInHierarchy) usable.Add(c);
@@ -33,7 +35,8 @@ namespace LaunchPlanner
                     // Stack neighbours fit into each other by design (engine mounts, decoupler rims).
                     if (StackNeighbours(a, b)) continue;
                     float depth = Depth(shapes[i].Value, shapes[j].Value);
-                    if (depth <= Tolerance) continue;
+                    // A part on the surface of its parent sits a little into it (radial decouplers, thrusters).
+                    if (depth <= (a.parent == b || b.parent == a ? AttachedTolerance : Tolerance)) continue;
                     string line = string.Format("{0} and {1} overlap by {2:0.00} m", a.partInfo.title, b.partInfo.title, depth);
                     Debug.Log(string.Format("[LaunchPlanner] check: {0} ({1} / {2})", line, a.partInfo.name, b.partInfo.name));
                     found.Add(line);
