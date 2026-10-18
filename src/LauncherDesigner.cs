@@ -844,6 +844,7 @@ namespace LaunchPlanner
         public const double PowerfulUpperTwr = 1.0;     // "powerful" option: least TWR of a stage lit in orbit
         const double BriskLanderTwr = 3, PowerfulLanderTwr = 5;
         double BriskTwr { get { return req.Powerful ? PowerfulClimbTwr : BriskClimbTwr; } }
+        double AscentTwr { get { return Math.Max(req.Powerful ? PowerfulAscentTwr : 0.9, req.MinUpperTwr); } }
         // Off while sizing a bare core that boosters will help lift: its own sluggishness says nothing yet.
         bool chargeClimb = true;
 
@@ -910,6 +911,7 @@ namespace LaunchPlanner
         /// <summary>The first constraint not met, or null.</summary>
         // During the search, a little more TWR is required: rounding to real tanks adds mass.
         double twrMargin = 1.04;
+        const double HydrogenSlack = 100;   // m/s past the ascent budget a hydrogen stage may still give (rounding, circularization)
 
         string ConstraintProblem(LauncherDesign d)
         {
@@ -918,8 +920,16 @@ namespace LaunchPlanner
             for (int i = 1; i < d.Stages.Count; i++)
                 if (d.Stages[i].Twr < MinTwr(d.Stages[i].StartDeltaV) * twrMargin)
                     return string.Format("stage {0} TWR too low ({1:0.00})", i + 1, d.Stages[i].Twr);
+            // Liquid hydrogen boils off during a long coast: no stage that still burns once the ascent is done (transfer,
+            // arrival) carries it.
             foreach (StagePlan s in d.Stages)
-                if (s.Boosters != null && s.Boosters.Count > 0 && s.CoreTwr < MinTwr(s.CoreStartDeltaV) * twrMargin)
+                if (s.Mixture != null && s.Mixture.Contains("LqdHydrogen") && s.StartDeltaV + s.DeltaV > req.AscentDeltaV + HydrogenSlack)
+                    return "liquid hydrogen in a transfer stage";
+            // The core left alone after the boosters drop is still climbing through the atmosphere, however much delta-v
+            // the boosters gave on paper (drag and steering eat into it): it keeps a climbing TWR.
+            foreach (StagePlan s in d.Stages)
+                if (s.Boosters != null && s.Boosters.Count > 0
+                    && s.CoreTwr < Math.Max(MinTwr(s.CoreStartDeltaV), s == d.Stages[0] && req.HomeAtmosphere ? AscentTwr : 0) * twrMargin)
                     return string.Format("core TWR too low after booster drop ({0:0.00})", s.CoreTwr);
             // Mounting is possible: the cluster fits under the widest unlocked tank, the boosters fit around the core.
             foreach (StagePlan s in d.Stages)
@@ -956,7 +966,7 @@ namespace LaunchPlanner
             double x = (startDeltaV / req.AscentDeltaV - 0.5) / 0.5;
             if (!req.HomeAtmosphere) x = startDeltaV / (req.AscentDeltaV * 0.5);
             x = Math.Max(0, Math.Min(1, x));
-            double high = Math.Max(req.Powerful ? PowerfulAscentTwr : 0.9, req.MinUpperTwr);
+            double high = AscentTwr;
             return high + (req.MinUpperTwr - high) * x;
         }
 
@@ -1097,12 +1107,15 @@ namespace LaunchPlanner
         {
             List<Upper> all = new List<Upper>();
             double payload = Math.Max(0.1, req.PayloadMass);
+            // The top stage finishes the trip when the mission goes past the parking orbit: no hydrogen then.
+            bool transfer = req.TargetDeltaV > req.AscentDeltaV + HydrogenSlack;
             foreach (PartInfo e in upperEngines)
                 for (int n = 1; n <= maxEngines; n++)
                     for (int k = 0; k < 28; k++)
                     {
                         double fuel = payload * 0.05 * Math.Pow(1.35, k);
                         StagePlan s = MakeStage(e, n, fuel, true);
+                        if (transfer && s.Mixture.Contains("LqdHydrogen")) break;
                         double m0 = req.PayloadMass + s.TotalMass;
                         double m1 = m0 - fuel;
                         double dv = e.IspVac * G0 * Math.Log(m0 / m1);
