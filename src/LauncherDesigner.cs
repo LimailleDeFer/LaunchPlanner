@@ -1215,6 +1215,16 @@ namespace LaunchPlanner
         {
             if (req.LanderDeltaV <= 0) return RunLauncher();
 
+            // The lander also burns in orbit (deorbit, ascent, the trip back): it pushes at least as hard as the
+            // launcher's upper stages, measured against Kerbin's gravity, when that asks more than the landing does.
+            double landingTwr = req.LanderTwr;
+            if (req.LanderGravity > 0) req.LanderTwr = Math.Max(landingTwr, req.MinUpperTwr * G0 / req.LanderGravity);
+            try { return RunWithLander(); }
+            finally { req.LanderTwr = landingTwr; }
+        }
+
+        List<LauncherDesign> RunWithLander()
+        {
             PartInfo legs;
             string problem;
             StagePlan lander = DesignLander(out legs, out problem);
