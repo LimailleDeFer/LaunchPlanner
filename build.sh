@@ -37,7 +37,8 @@ done
 API="${NETAPI:-/usr/lib/mono/4.7.1-api}"
 echo "Building the mod"
 mcs -nologo -target:library -optimize -nostdlib -r:"$API/mscorlib.dll" -r:"$API/System.dll" -r:"$API/System.Core.dll" -out:"$MOD/Plugins/LaunchPlanner.dll" \
-  -r:"$REF/Assembly-CSharp.dll" -r:"$REF/UnityEngine.CoreModule.dll" -r:"$REF/UnityEngine.IMGUIModule.dll" "${EXTRA[@]}" \
+  -r:"$REF/Assembly-CSharp.dll" -r:"$REF/UnityEngine.CoreModule.dll" -r:"$REF/UnityEngine.IMGUIModule.dll" \
+  -r:"$REF/UnityEngine.PhysicsModule.dll" "${EXTRA[@]}" \
   src/*.cs
 
 cp README.md "$MOD/README.md"

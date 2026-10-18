@@ -839,9 +839,10 @@ namespace LaunchPlanner
 
         // The ascent budget assumes a brisk climb; below this TWR, a stage still climbing pays extra gravity losses.
         public const double BriskClimbTwr = 1.5;
-        public const double PowerfulClimbTwr = 2.2;     // "powerful" option: the climb the budget is measured against
-        const double PowerfulAscentTwr = 1.3;           // "powerful" option: least TWR of a stage lit mid-ascent
-        public const double PowerfulUpperTwr = 0.8;     // "powerful" option: least TWR of a stage lit in orbit
+        public const double PowerfulClimbTwr = 2.6;     // "powerful" option: the climb the budget is measured against
+        const double PowerfulAscentTwr = 1.6;           // "powerful" option: least TWR of a stage lit mid-ascent
+        public const double PowerfulUpperTwr = 1.0;     // "powerful" option: least TWR of a stage lit in orbit
+        const double BriskLanderTwr = 3, PowerfulLanderTwr = 5;
         double BriskTwr { get { return req.Powerful ? PowerfulClimbTwr : BriskClimbTwr; } }
         // Off while sizing a bare core that boosters will help lift: its own sluggishness says nothing yet.
         bool chargeClimb = true;
@@ -1217,8 +1218,11 @@ namespace LaunchPlanner
 
             // The lander also burns in orbit (deorbit, ascent, the trip back): it pushes at least as hard as the
             // launcher's upper stages, measured against Kerbin's gravity, when that asks more than the landing does.
+            // Against the destination's gravity, 3 (5 with the power option): at 2 the engine only brakes the fall at
+            // one g, and killing the orbital speed before touchdown drags on.
             double landingTwr = req.LanderTwr;
-            if (req.LanderGravity > 0) req.LanderTwr = Math.Max(landingTwr, req.MinUpperTwr * G0 / req.LanderGravity);
+            req.LanderTwr = Math.Max(landingTwr, req.Powerful ? PowerfulLanderTwr : BriskLanderTwr);
+            if (req.LanderGravity > 0) req.LanderTwr = Math.Max(req.LanderTwr, req.MinUpperTwr * G0 / req.LanderGravity);
             try { return RunWithLander(); }
             finally { req.LanderTwr = landingTwr; }
         }

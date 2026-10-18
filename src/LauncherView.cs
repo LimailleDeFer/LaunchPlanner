@@ -45,6 +45,7 @@ namespace LaunchPlanner
         LauncherDesign buildRequest;
         string buildMessage = "";
         readonly List<string> buildNotes = new List<string>();
+        int checkFrame = -1;   // frame at which the vessel just built is checked (once the editor has loaded it)
 
         GUIStyle rich;
         GUIStyle card;
@@ -86,6 +87,7 @@ namespace LaunchPlanner
                 try
                 {
                     string error = CraftSpawner.Spawn(d, buildNotes);
+                    if (error == null) checkFrame = Time.frameCount + 10;
                     buildMessage = error != null ? "<color=#ff6666>" + error + "</color>"
                         : "<color=#66ff66>The launcher \"" + d.Variant + "\" is attached under your payload, stages included. " +
                           "To go back, load the vessel \"Before launcher\".</color>";
@@ -95,6 +97,26 @@ namespace LaunchPlanner
                     Debug.LogException(e);
                     buildMessage = "<color=#ff6666>Error during construction: " + e.Message + "</color>";
                 }
+            }
+            if (checkFrame >= 0 && Time.frameCount >= checkFrame)
+            {
+                checkFrame = -1;
+                try
+                {
+                    ShipConstruct ship = EditorLogic.fetch != null ? EditorLogic.fetch.ship : null;
+                    if (ship != null && ship.parts != null)
+                    {
+                        List<string> overlaps = CraftCheck.Overlaps(ship.parts, CraftSpawner.LauncherIds());
+                        if (overlaps.Count == 0) buildNotes.Add("Check in the editor: no generated part sinks into another.");
+                        else
+                        {
+                            buildNotes.Add(string.Format("Check in the editor: {0} overlap{1} found (also written to KSP.log, please send it):",
+                                overlaps.Count, overlaps.Count > 1 ? "s" : ""));
+                            buildNotes.AddRange(overlaps.GetRange(0, Math.Min(overlaps.Count, 12)));
+                        }
+                    }
+                }
+                catch (Exception e) { Debug.LogException(e); }
             }
             lock (sync)
             {
