@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace LaunchPlanner
@@ -23,10 +24,20 @@ namespace LaunchPlanner
                 // Fuel lines and struts run from one part into another by design.
                 if (p == null || p is CompoundPart) continue;
                 List<Collider> usable = new List<Collider>();
+                Bounds model = ModelBounds(p);
                 foreach (Collider c in p.GetComponentsInChildren<Collider>(false))
-                    if (c != null && c.enabled && !c.isTrigger && c.gameObject.activeInHierarchy) usable.Add(c);
+                {
+                    if (c == null || !c.enabled || c.isTrigger || !c.gameObject.activeInHierarchy) continue;
+                    // A concave mesh gives meaningless penetration depths.
+                    MeshCollider mesh = c as MeshCollider;
+                    if (mesh != null && !mesh.convex) continue;
+                    // A collider far larger than the part's model (helper volumes of some mods) is not its hull.
+                    if (model.size.magnitude > 0.01f && c.bounds.size.magnitude > 2 * model.size.magnitude + 0.5f) continue;
+                    usable.Add(c);
+                }
                 if (usable.Count > 0) shapes.Add(new KeyValuePair<Part, Collider[]>(p, usable.ToArray()));
             }
+            Dictionary<Part, List<string>> byPart = new Dictionary<Part, List<string>>();
             for (int i = 0; i < shapes.Count; i++)
                 for (int j = i + 1; j < shapes.Count; j++)
                 {
@@ -40,6 +51,18 @@ namespace LaunchPlanner
                     string line = string.Format("{0} and {1} overlap by {2:0.00} m", a.partInfo.title, b.partInfo.title, depth);
                     Debug.Log(string.Format("[LaunchPlanner] check: {0} ({1} / {2})", line, a.partInfo.name, b.partInfo.name));
                     found.Add(line);
+                    foreach (Part q in new[] { a, b })
+                    {
+                        if (!byPart.ContainsKey(q)) byPart[q] = new List<string>();
+                        byPart[q].Add(line);
+                    }
+                }
+            // A part said to sink into many others has a collider the check cannot read: one line for it instead.
+            foreach (KeyValuePair<Part, List<string>> e in byPart)
+                if (e.Value.Count > 4)
+                {
+                    found.RemoveAll(l => e.Value.Contains(l));
+                    found.Add(string.Format("{0}: collider not measurable ({1} overlaps ignored)", e.Key.partInfo.title, e.Value.Count));
                 }
             return found;
         }
@@ -50,6 +73,18 @@ namespace LaunchPlanner
             return child != null && child.srfAttachNode != null && child.srfAttachNode.attachedPart != child.parent;
         }
 
+        static Bounds ModelBounds(Part p)
+        {
+            Bounds b = new Bounds(p.transform.position, Vector3.zero);
+            bool any = false;
+            foreach (Renderer r in p.GetComponentsInChildren<Renderer>(false))
+            {
+                if (r == null || !r.enabled || !(r is MeshRenderer || r is SkinnedMeshRenderer)) continue;
+                if (any) b.Encapsulate(r.bounds); else { b = r.bounds; any = true; }
+            }
+            return b;
+        }
+
         /// <summary>Deepest penetration between the two parts' colliders (0 if they do not meet).</summary>
         static float Depth(Collider[] a, Collider[] b)
         {
@@ -58,13 +93,16 @@ namespace LaunchPlanner
                 foreach (Collider cb in b)
                 {
                     if (!ca.bounds.Intersects(cb.bounds)) continue;
+                    // No real penetration can be deeper than the overlap of the two boxes.
+                    Vector3 lo = Vector3.Max(ca.bounds.min, cb.bounds.min), hi = Vector3.Min(ca.bounds.max, cb.bounds.max);
+                    float box = Mathf.Min(hi.x - lo.x, Mathf.Min(hi.y - lo.y, hi.z - lo.z));
                     try
                     {
                         Vector3 dir;
                         float d;
                         if (Physics.ComputePenetration(ca, ca.transform.position, ca.transform.rotation,
                             cb, cb.transform.position, cb.transform.rotation, out dir, out d))
-                            deepest = Math.Max(deepest, d);
+                            deepest = Math.Max(deepest, Math.Min(d, box));
                     }
                     catch (Exception) { }   // concave mesh colliders: not measurable
                 }
