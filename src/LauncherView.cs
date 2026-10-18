@@ -108,6 +108,7 @@ namespace LaunchPlanner
                     {
                         List<string> overlaps = CraftCheck.Overlaps(ship.parts, CraftSpawner.LauncherIds());
                         if (overlaps.Count == 0) buildNotes.Add("Check in the editor: no generated part sinks into another.");
+                        else if (overlaps.Count == 1 && overlaps[0].StartsWith("check not reliable")) buildNotes.Add("Check in the editor: " + overlaps[0] + ".");
                         else
                         {
                             buildNotes.Add(string.Format("Check in the editor: {0} overlap{1} found (also written to KSP.log, please send it):",

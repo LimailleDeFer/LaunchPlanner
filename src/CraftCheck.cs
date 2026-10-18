@@ -18,6 +18,9 @@ namespace LaunchPlanner
         public static List<string> Overlaps(List<Part> parts, HashSet<uint> launcher)
         {
             List<string> found = new List<string>();
+            // Colliders of parts just loaded in the editor may still carry their old place until physics catches up.
+            Physics.SyncTransforms();
+            Dictionary<Part, Bounds> models = new Dictionary<Part, Bounds>();
             List<KeyValuePair<Part, Collider[]>> shapes = new List<KeyValuePair<Part, Collider[]>>();
             foreach (Part p in parts)
             {
@@ -25,6 +28,7 @@ namespace LaunchPlanner
                 if (p == null || p is CompoundPart) continue;
                 List<Collider> usable = new List<Collider>();
                 Bounds model = ModelBounds(p);
+                models[p] = model;
                 foreach (Collider c in p.GetComponentsInChildren<Collider>(false))
                 {
                     if (c == null || !c.enabled || c.isTrigger || !c.gameObject.activeInHierarchy) continue;
@@ -37,6 +41,7 @@ namespace LaunchPlanner
                 }
                 if (usable.Count > 0) shapes.Add(new KeyValuePair<Part, Collider[]>(p, usable.ToArray()));
             }
+            int pairs = 0;
             Dictionary<Part, List<string>> byPart = new Dictionary<Part, List<string>>();
             for (int i = 0; i < shapes.Count; i++)
                 for (int j = i + 1; j < shapes.Count; j++)
@@ -45,6 +50,10 @@ namespace LaunchPlanner
                     if (launcher.Count > 0 && !launcher.Contains(a.persistentId) && !launcher.Contains(b.persistentId)) continue;
                     // Stack neighbours fit into each other by design (engine mounts, decoupler rims).
                     if (StackNeighbours(a, b)) continue;
+                    // Parts whose visible models are apart cannot sink into each other.
+                    Bounds ma = models[a], mb = models[b];
+                    if (ma.size.sqrMagnitude > 0 && mb.size.sqrMagnitude > 0 && !ma.Intersects(mb)) continue;
+                    pairs++;
                     float depth = Depth(shapes[i].Value, shapes[j].Value);
                     // A part on the surface of its parent sits a little into it (radial decouplers, thrusters).
                     if (depth <= (a.parent == b || b.parent == a ? AttachedTolerance : Tolerance)) continue;
@@ -57,6 +66,12 @@ namespace LaunchPlanner
                         byPart[q].Add(line);
                     }
                 }
+            // When most neighbouring pairs seem to overlap, the measure itself is wrong: say so instead of listing them.
+            if (found.Count > 10 && found.Count > pairs / 3)
+            {
+                Debug.Log(string.Format("[LaunchPlanner] check: {0} of {1} pairs reported, measure unreliable", found.Count, pairs));
+                return new List<string> { string.Format("check not reliable here ({0} of {1} neighbouring pairs reported), ignored", found.Count, pairs) };
+            }
             // A part said to sink into many others has a collider the check cannot read: one line for it instead.
             foreach (KeyValuePair<Part, List<string>> e in byPart)
                 if (e.Value.Count > 4)

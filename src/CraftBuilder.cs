@@ -691,6 +691,8 @@ namespace LaunchPlanner
             double tankR = tank.Shape.Diameter / 2, engR = es.Diameter / 2;
             double radius = Math.Max(tankR - engR, engR / Math.Sin(Math.PI / Math.Max(2, ring)));
             if (center) radius = Math.Max(radius, 2 * engR);
+            // The ring stays under its own tank, never under a neighbouring booster or the core.
+            radius = Math.Min(radius, Math.Max(tankR - engR, 0.6 * tankR));
             double y = Bottom(tank);
             List<CraftPart> group = new List<CraftPart>();
             for (int j = 0; j < ring; j++)

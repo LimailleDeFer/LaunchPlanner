@@ -1010,7 +1010,7 @@ namespace LaunchPlanner
 
         bool ClusterFits(string mixture, PartInfo engine, int count)
         {
-            return ClusterCapacity(CraftBuilder.DiameterOf(LargestSize(mixture, SizeOf(engine))), CraftBuilder.DiameterOf(SizeOf(engine))) >= count;
+            return ClusterCapacity(CraftBuilder.DiameterOf(LargestSize(mixture, SizeOf(engine))), EngineWidth(engine)) >= count;
         }
 
         string LargestSize(string mixture, string fallback)
@@ -1024,13 +1024,19 @@ namespace LaunchPlanner
             return largest;
         }
 
+        /// <summary>Width an engine takes in a cluster: its node size, or its model if wider (the builder uses the same).</summary>
+        static double EngineWidth(PartInfo engine)
+        {
+            return Math.Max(CraftBuilder.DiameterOf(SizeOf(engine)), engine.DiameterM);
+        }
+
         /// <summary>Smallest tank diameter under which the engine cluster fits.</summary>
         string ClusterSize(string mixture, PartInfo engine, int count)
         {
             string size = SizeOf(engine);
             Mixture mix;
             if (count <= 1 || !mixtures.TryGetValue(mixture, out mix) || mix.Sizes.Count == 0) return size;
-            double engineD = CraftBuilder.DiameterOf(size);
+            double engineD = EngineWidth(engine);
             foreach (string s in mix.Sizes)
                 if (ClusterCapacity(CraftBuilder.DiameterOf(s), engineD) >= count) return s;
             return mix.Sizes[mix.Sizes.Count - 1];
@@ -1934,7 +1940,7 @@ namespace LaunchPlanner
                 StagePlan s = d.Stages[i];
                 if (s.Decoupler == null && s != first)
                     d.Notes.Add("No unlocked decoupler of the right size.");
-                if (s.EngineCount > 1 && s.Coupler == null && ClusterCapacity(CraftBuilder.DiameterOf(s.Size), CraftBuilder.DiameterOf(SizeOf(s.Engine))) < s.EngineCount)
+                if (s.EngineCount > 1 && s.Coupler == null && ClusterCapacity(CraftBuilder.DiameterOf(s.Size), EngineWidth(s.Engine)) < s.EngineCount)
                     d.Notes.Add(string.Format("Stage {0}: {1} engines overlap under a {2} tank (no wider tank unlocked).",
                         i + 1, s.EngineCount, Diameter(s.Size)));
                 if (i + 1 < d.Stages.Count && s.Size != d.Stages[i + 1].Size &&
@@ -2048,7 +2054,7 @@ namespace LaunchPlanner
             if (b != null && !b.Solid)
             {
                 int k = b.EnginesEach;
-                double engD = CraftBuilder.DiameterOf(SizeOf(b.Part));
+                double engD = k > 1 ? EngineWidth(b.Part) : CraftBuilder.DiameterOf(SizeOf(b.Part));
                 string bs = ChooseSize(b.Fuel, b.Mixture, b.Part, k, 0, CraftBuilder.DiameterOf(s.Size));
                 // A booster taller than the core would stick out below: widen it until it fits.
                 double coreHeight = TanksHeight(s.Tanks) + HeightOf(s.Engine) + (s.Attitude != null ? s.Attitude.StackHeight : 0);
@@ -2105,7 +2111,7 @@ namespace LaunchPlanner
             Mixture mix;
             string engineSize = SizeOf(engine);
             if (!mixtures.TryGetValue(mixture, out mix) || mix.Sizes.Count == 0) return engineSize;
-            double engineD = CraftBuilder.DiameterOf(engineSize);
+            double engineD = engines > 1 ? EngineWidth(engine) : CraftBuilder.DiameterOf(engineSize);
             if (req.MaxWidth > 0) maxDiameter = Math.Min(maxDiameter, req.MaxWidth);
             List<string> sizes = new List<string>();
             foreach (string size in mix.Sizes)

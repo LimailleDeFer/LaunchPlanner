@@ -178,9 +178,20 @@ namespace LaunchPlanner
             {
                 Matrix4x4 toPart = prefab.transform.worldToLocalMatrix;
                 float minX = float.MaxValue, maxX = float.MinValue, minZ = float.MaxValue, maxZ = float.MinValue;
+                // Shrouds and fairings that drop off (ModuleJettison) are not the part's own width.
+                HashSet<string> jettison = new HashSet<string>();
+                foreach (ModuleJettison j in prefab.FindModulesImplementing<ModuleJettison>())
+                    if (!string.IsNullOrEmpty(j.jettisonName))
+                        foreach (string n in j.jettisonName.Split(',')) jettison.Add(n.Trim());
                 foreach (MeshFilter mf in prefab.GetComponentsInChildren<MeshFilter>(true))
                 {
                     if (mf.sharedMesh == null) continue;
+                    // Meshes switched off on the prefab (variants, hidden options) and jettisonable shrouds are skipped.
+                    bool hidden = false;
+                    for (Transform t = mf.transform; t != null && t != prefab.transform; t = t.parent)
+                        if (!t.gameObject.activeSelf || jettison.Contains(t.name)) { hidden = true; break; }
+                    MeshRenderer mr = mf.GetComponent<MeshRenderer>();
+                    if (hidden || (mr != null && !mr.enabled)) continue;
                     Bounds b = mf.sharedMesh.bounds;
                     Matrix4x4 m = toPart * mf.transform.localToWorldMatrix;
                     for (int i = 0; i < 8; i++)
