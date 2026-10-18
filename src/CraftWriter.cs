@@ -104,8 +104,10 @@ namespace LaunchPlanner
                     .Add("attRot0", Q(localRot))
                     .Add("mir", "1,1,1")
                     .Add("symMethod", "Radial")
-                    .Add("autostrutMode", "Off")
-                    .Add("rigidAttachment", "False")
+                    // Stiff launcher whatever the parts: every part is autostrutted to the heaviest one (rebuilt by
+                    // the game at each staging) and stack joints are rigid. Fuel lines cannot take autostruts.
+                    .Add("autostrutMode", p.FuelTarget != null ? "Off" : "Heaviest")
+                    .Add("rigidAttachment", p.FuelTarget != null ? "False" : "True")
                     .Add("istg", (stage >= 0 ? stage : Math.Max(stageOffset, sep)).ToString(Inv))
                     .Add("resPri", "0")
                     .Add("dstg", (stage >= 0 ? stage : Math.Max(stageOffset, sep)).ToString(Inv))
